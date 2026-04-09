@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -16,17 +16,16 @@ router = APIRouter(prefix="/api/insight", tags=["insights"])
 
 
 def _records_to_json(records) -> str:
-    """Convert records to a JSON string for prompts."""
+    """Convert records to a JSON string for prompts (BA-focused)."""
     items = []
     for r in records:
         items.append({
             "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-            "raw_text": r.raw_text,
             "activity": r.activity,
             "thought": r.thought,
+            "pleasure_score": r.pleasure_score,
+            "importance_score": r.importance_score,
             "emotion_type": r.emotion_type,
-            "emotion_intensity": r.emotion_intensity,
-            "cognitive_distortion": r.cognitive_distortion,
         })
     return json.dumps(items, ensure_ascii=False, indent=2)
 
@@ -83,10 +82,10 @@ async def daily_insight(
             from fastapi import HTTPException
             raise HTTPException(status_code=400, detail="Invalid date format")
     else:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = datetime.now().date()
 
     # Check if already generated today
-    day_start = datetime(target_date.year, target_date.month, target_date.day, tzinfo=timezone.utc)
+    day_start = datetime(target_date.year, target_date.month, target_date.day)
     day_end = day_start + timedelta(days=1)
 
     existing = (
@@ -120,7 +119,7 @@ async def daily_insight(
             id=str(uuid.uuid4()),
             user_id=user_id,
             report_type="daily",
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(),
             content="今天还没有记录哦，记得随时记录你的心情~",
             patterns="[]",
             cbt_suggestions="[]",
@@ -139,7 +138,7 @@ async def daily_insight(
         id=str(uuid.uuid4()),
         user_id=user_id,
         report_type="daily",
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(),
         content=summary_content,
         patterns="[]",
         cbt_suggestions="[]",
@@ -156,7 +155,7 @@ async def weekly_insight(
     db: Session = Depends(get_db),
 ):
     """Generate a weekly insight report for the last 7 days."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now()
     week_start = now - timedelta(days=7)
 
     records = (
@@ -186,16 +185,19 @@ async def weekly_insight(
 
     # Compute stats
     total_count = len(records)
-    emotion_freq = _compute_emotion_frequency(records)
-    avg_intensity = _compute_avg_intensity(records)
     intensity_trend = _compute_intensity_trend(records)
+
+    pleasure_scores = [r.pleasure_score for r in records if r.pleasure_score is not None]
+    importance_scores = [r.importance_score for r in records if r.importance_score is not None]
+    avg_pleasure = sum(pleasure_scores) / len(pleasure_scores) if pleasure_scores else 5.0
+    avg_importance = sum(importance_scores) / len(importance_scores) if importance_scores else 5.0
 
     records_json = _records_to_json(records)
     sys_prompt, user_msg = weekly_summary_prompt(
         week_records_json=records_json,
         total_count=total_count,
-        emotion_frequency=json.dumps(emotion_freq, ensure_ascii=False),
-        avg_intensity=avg_intensity,
+        avg_pleasure=avg_pleasure,
+        avg_importance=avg_importance,
         intensity_trend=intensity_trend,
     )
     weekly_response = await call_llm(sys_prompt, user_msg)

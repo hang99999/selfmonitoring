@@ -1,3 +1,9 @@
+import type {
+  MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
+  LifeDomain, Value, Activity, PlannedActivity, DailyMood,
+  ChatMessage, ChatResponse, UserState,
+} from './types';
+
 const BASE = '';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -10,14 +16,32 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  submitRecord: (text: string, userId = 'default_user') =>
-    request<import('./types').MoodRecord>('/api/record/submit', {
+  // --- Records ---
+  submitRecord: (
+    text: string,
+    userId = 'default_user',
+    plannedActivityId?: string,
+    quickFields?: { activity: string; pleasure_score: number; importance_score: number },
+  ) =>
+    request<MoodRecord>('/api/record/submit', {
       method: 'POST',
-      body: JSON.stringify({ text, user_id: userId }),
+      body: JSON.stringify({
+        text,
+        user_id: userId,
+        planned_activity_id: plannedActivityId,
+        ...quickFields,
+      }),
     }),
 
-  confirmRecord: (id: string, updates?: Partial<Pick<import('./types').MoodRecord, 'activity' | 'thought' | 'emotion_type' | 'emotion_intensity'>>) =>
-    request<import('./types').MoodRecord>(`/api/record/${id}/confirm`, {
+  confirmRecord: (id: string, updates?: {
+    activity?: string;
+    thought?: string;
+    emotion_type?: string;
+    emotion_intensity?: number;
+    pleasure_score?: number;
+    importance_score?: number;
+  }) =>
+    request<MoodRecord>(`/api/record/${id}/confirm`, {
       method: 'PUT',
       body: JSON.stringify(updates || {}),
     }),
@@ -25,27 +49,146 @@ export const api = {
   listRecords: (date?: string, userId = 'default_user') => {
     const params = new URLSearchParams({ user_id: userId });
     if (date) params.set('date', date);
-    return request<import('./types').MoodRecord[]>(`/api/record/list?${params}`);
+    return request<MoodRecord[]>(`/api/record/list?${params}`);
   },
 
   getRecord: (id: string) =>
-    request<import('./types').MoodRecord>(`/api/record/${id}`),
+    request<MoodRecord>(`/api/record/${id}`),
 
+  // --- Insights ---
   getDailyInsight: (userId = 'default_user', date?: string) => {
     const params = new URLSearchParams({ user_id: userId });
     if (date) params.set('date', date);
-    return request<import('./types').InsightReport>(`/api/insight/daily?${params}`);
+    return request<InsightReport>(`/api/insight/daily?${params}`);
   },
 
   getWeeklyInsight: (userId = 'default_user') =>
-    request<import('./types').InsightReport>(`/api/insight/weekly?user_id=${userId}`),
+    request<InsightReport>(`/api/insight/weekly?user_id=${userId}`),
 
+  // --- Stats ---
   getStatsToday: (userId = 'default_user') =>
-    request<import('./types').DayStats>(`/api/stats/today?user_id=${userId}`),
+    request<DayStats>(`/api/stats/today?user_id=${userId}`),
 
   getStatsWeek: (userId = 'default_user') =>
-    request<import('./types').WeekStats>(`/api/stats/week?user_id=${userId}`),
+    request<WeekStats>(`/api/stats/week?user_id=${userId}`),
 
   getStatsMonth: (userId = 'default_user') =>
-    request<import('./types').MonthStats>(`/api/stats/month?user_id=${userId}`),
+    request<MonthStats>(`/api/stats/month?user_id=${userId}`),
+
+  // --- Life Domains ---
+  getDomains: (userId = 'default_user') =>
+    request<LifeDomain[]>(`/api/activity/domains?user_id=${userId}`),
+
+  createDomain: (name: string, description?: string, userId = 'default_user') =>
+    request<LifeDomain>('/api/activity/domains', {
+      method: 'POST',
+      body: JSON.stringify({ name, description, user_id: userId }),
+    }),
+
+  // --- Values ---
+  getValues: (userId = 'default_user', lifeDomainId?: string) => {
+    const params = new URLSearchParams({ user_id: userId });
+    if (lifeDomainId) params.set('life_domain_id', lifeDomainId);
+    return request<Value[]>(`/api/activity/values?${params}`);
+  },
+
+  createValue: (lifeDomainId: string, content: string, userId = 'default_user') =>
+    request<Value>('/api/activity/values', {
+      method: 'POST',
+      body: JSON.stringify({ life_domain_id: lifeDomainId, content, user_id: userId }),
+    }),
+
+  deleteValue: (valueId: string) =>
+    request<{ ok: boolean }>(`/api/activity/values/${valueId}`, { method: 'DELETE' }),
+
+  // --- Activities ---
+  getActivities: (userId = 'default_user', lifeDomainId?: string, valueId?: string) => {
+    const params = new URLSearchParams({ user_id: userId });
+    if (lifeDomainId) params.set('life_domain_id', lifeDomainId);
+    if (valueId) params.set('value_id', valueId);
+    return request<Activity[]>(`/api/activity/list?${params}`);
+  },
+
+  createActivity: (data: {
+    name: string;
+    value_id?: string;
+    life_domain_id?: string;
+    difficulty_rank?: number;
+    user_id?: string;
+  }) =>
+    request<Activity>('/api/activity/create', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: 'default_user', ...data }),
+    }),
+
+  deleteActivity: (activityId: string) =>
+    request<{ ok: boolean }>(`/api/activity/${activityId}`, { method: 'DELETE' }),
+
+  // --- Planned Activities ---
+  getPlanned: (date?: string, userId = 'default_user') => {
+    const params = new URLSearchParams({ user_id: userId });
+    if (date) params.set('date', date);
+    return request<PlannedActivity[]>(`/api/activity/planned?${params}`);
+  },
+
+  createPlanned: (data: {
+    activity_name: string;
+    scheduled_date: string;
+    scheduled_time?: string;
+    activity_id?: string;
+    life_domain_id?: string;
+    value_id?: string;
+    user_id?: string;
+  }) =>
+    request<PlannedActivity>('/api/activity/planned', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: 'default_user', ...data }),
+    }),
+
+  completePlanned: (plannedId: string, completionRecordId?: string) =>
+    request<PlannedActivity>(`/api/activity/planned/${plannedId}/complete`, {
+      method: 'PUT',
+      body: JSON.stringify({ completion_record_id: completionRecordId }),
+    }),
+
+  deletePlanned: (plannedId: string) =>
+    request<{ ok: boolean }>(`/api/activity/planned/${plannedId}`, { method: 'DELETE' }),
+
+  rescheduleActivity: (plannedId: string, scheduledDate: string, scheduledTime?: string) =>
+    request<PlannedActivity>(`/api/activity/planned/${plannedId}/reschedule`, {
+      method: 'PUT',
+      body: JSON.stringify({ scheduled_date: scheduledDate, scheduled_time: scheduledTime ?? null }),
+    }),
+
+  breakdownActivity: (plannedId: string) =>
+    request<{ steps: string[] }>(`/api/activity/planned/${plannedId}/breakdown`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  // --- Daily Mood ---
+  setDailyMood: (date: string, moodScore: number, userId = 'default_user') =>
+    request<DailyMood>('/api/activity/daily-mood', {
+      method: 'POST',
+      body: JSON.stringify({ date, mood_score: moodScore, user_id: userId }),
+    }),
+
+  getDailyMood: (date: string, userId = 'default_user') =>
+    request<DailyMood | null>(`/api/activity/daily-mood?user_id=${userId}&date=${date}`),
+
+  // --- Chatbot ---
+  getChatbotState: (userId = 'default_user') =>
+    request<UserState>(`/api/chatbot/state?user_id=${userId}`),
+
+  sendChatMessage: (messages: ChatMessage[], userId = 'default_user') =>
+    request<ChatResponse>('/api/chatbot/chat', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, messages }),
+    }),
+
+  setCompanionName: (name: string, userId = 'default_user') =>
+    request<{ ok: boolean; companion_name: string }>('/api/chatbot/companion-name', {
+      method: 'PUT',
+      body: JSON.stringify({ user_id: userId, companion_name: name }),
+    }),
 };
