@@ -98,7 +98,7 @@ async def daily_insight(
         )
         .first()
     )
-    if existing:
+    if existing and not existing.content.startswith("[LLM Error]"):
         return existing
 
     # Get today's records
@@ -114,32 +114,26 @@ async def daily_insight(
     )
 
     if not records:
-        # Create a minimal report
-        report = InsightReport(
-            id=str(uuid.uuid4()),
-            user_id=user_id,
-            report_type="daily",
-            generated_at=datetime.now(),
-            content="今天还没有记录哦，记得随时记录你的心情~",
-            patterns="[]",
-            cbt_suggestions="[]",
-        )
-        db.add(report)
-        db.commit()
-        db.refresh(report)
-        return report
+        content = "今天还没有记录哦，记得随时记录你的心情~"
+    else:
+        records_json = _records_to_json(records)
+        sys_prompt, user_msg = daily_summary_prompt(records_json, db=db)
+        content = await call_llm(sys_prompt, user_msg)
 
-    # Generate daily summary via LLM
-    records_json = _records_to_json(records)
-    sys_prompt, user_msg = daily_summary_prompt(records_json)
-    summary_content = await call_llm(sys_prompt, user_msg)
+    if existing:
+        # Update the bad cached record in place
+        existing.content = content
+        existing.generated_at = datetime.now()
+        db.commit()
+        db.refresh(existing)
+        return existing
 
     report = InsightReport(
         id=str(uuid.uuid4()),
         user_id=user_id,
         report_type="daily",
         generated_at=datetime.now(),
-        content=summary_content,
+        content=content,
         patterns="[]",
         cbt_suggestions="[]",
     )
@@ -199,6 +193,7 @@ async def weekly_insight(
         avg_pleasure=avg_pleasure,
         avg_importance=avg_importance,
         intensity_trend=intensity_trend,
+        db=db,
     )
     weekly_response = await call_llm(sys_prompt, user_msg)
 

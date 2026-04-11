@@ -1,10 +1,12 @@
 import type {
-  MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
+  MoodRecord, InsightReport, DayStats, WeekStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatResponse, UserState,
 } from './types';
 
-const BASE = '';
+// ── 后端地址 ────────────────────────────────────────────────────────────────
+// 开发时手机和电脑在同一 WiFi 下，指向电脑局域网 IP
+const BASE = 'http://47.239.225.34:8000';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
@@ -72,9 +74,6 @@ export const api = {
   getStatsWeek: (userId = 'default_user') =>
     request<WeekStats>(`/api/stats/week?user_id=${userId}`),
 
-  getStatsMonth: (userId = 'default_user') =>
-    request<MonthStats>(`/api/stats/month?user_id=${userId}`),
-
   // --- Life Domains ---
   getDomains: (userId = 'default_user') =>
     request<LifeDomain[]>(`/api/activity/domains?user_id=${userId}`),
@@ -102,10 +101,9 @@ export const api = {
     request<{ ok: boolean }>(`/api/activity/values/${valueId}`, { method: 'DELETE' }),
 
   // --- Activities ---
-  getActivities: (userId = 'default_user', lifeDomainId?: string, valueId?: string) => {
+  getActivities: (userId = 'default_user', lifeDomainId?: string) => {
     const params = new URLSearchParams({ user_id: userId });
     if (lifeDomainId) params.set('life_domain_id', lifeDomainId);
-    if (valueId) params.set('value_id', valueId);
     return request<Activity[]>(`/api/activity/list?${params}`);
   },
 

@@ -442,7 +442,7 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
     # Compute user state and build system prompt
     state = _compute_user_state(db, req.user_id)
     companion_name = state["companion_name"]
-    system = chatbot_system_prompt(state, companion_name)
+    system = chatbot_system_prompt(state, companion_name, db=db)
 
     # Call LLM with full conversation history
     messages_payload = [{"role": m.role, "content": m.content} for m in req.messages]

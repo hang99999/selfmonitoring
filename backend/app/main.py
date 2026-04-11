@@ -4,8 +4,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, SessionLocal
-from app.models import Base, User
+from app.models import Base, User, SystemPrompt
 from app.routers import records, insights, stats, activities, chatbot
+from app.prompts import (
+    SAFETY_CHECK_SYSTEM,
+    STRUCTURED_EXTRACTION_SYSTEM,
+    EMPATHIC_FEEDBACK_SYSTEM,
+    DAILY_SUMMARY_SYSTEM,
+    WEEKLY_SUMMARY_SYSTEM,
+    CHATBOT_SYSTEM_PROMPT,
+)
 
 
 def _migrate(conn):
@@ -34,13 +42,41 @@ async def lifespan(app: FastAPI):
         _migrate(conn.connection)
     db = SessionLocal()
     try:
+        # Ensure default user exists
         default_user = db.query(User).filter(User.id == "default_user").first()
         if not default_user:
             db.add(User(id="default_user"))
             db.commit()
+
+        # Seed system prompts (only insert if key does not exist yet)
+        _seed_prompts(db)
     finally:
         db.close()
     yield
+
+
+_PROMPT_SEEDS = [
+    ("safety_check",          "安全风险评估：判断用户输入的风险等级（safe/mild/high/crisis）",          SAFETY_CHECK_SYSTEM),
+    ("structured_extraction", "BA结构化提取：从用户记录中提取活动、想法、愉悦度、重要性、情绪类型",      STRUCTURED_EXTRACTION_SYSTEM),
+    ("empathic_feedback",     "小暖即时反馈：对用户完成的活动给出温暖的正向强化回应",                    EMPATHIC_FEEDBACK_SYSTEM),
+    ("daily_summary",         "每日总结：基于当天活动记录生成行为聚焦的每日小结",                        DAILY_SUMMARY_SYSTEM),
+    ("weekly_summary",        "每周报告：生成行为-情绪关联洞察报告，包含结构化JSON",                     WEEKLY_SUMMARY_SYSTEM),
+    ("chatbot",               "聊天伙伴人格：小暖的完整人格设定、对话模式、触发对话说明（核心prompt）",   CHATBOT_SYSTEM_PROMPT),
+]
+
+
+def _seed_prompts(db):
+    from datetime import datetime
+    for key, description, content in _PROMPT_SEEDS:
+        existing = db.query(SystemPrompt).filter(SystemPrompt.key == key).first()
+        if not existing:
+            db.add(SystemPrompt(
+                key=key,
+                content=content,
+                description=description,
+                updated_at=datetime.now(),
+            ))
+    db.commit()
 
 
 app = FastAPI(title="LV-CBT API", lifespan=lifespan)

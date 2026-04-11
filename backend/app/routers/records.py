@@ -68,7 +68,7 @@ async def _run_ai_background(
         new_risk_level = None
 
         if run_safety_check:
-            sys_prompt, user_msg = safety_check_prompt(text)
+            sys_prompt, user_msg = safety_check_prompt(text, db=db)
             safety_response = await call_llm(sys_prompt, user_msg)
             if not safety_response.startswith("[LLM Error]"):
                 safety_data = _parse_json_response(safety_response)
@@ -84,6 +84,7 @@ async def _run_ai_background(
             pleasure_score=pleasure_score,
             importance_score=importance_score,
             recent_records_summary=recent_summary,
+            db=db,
         )
         feedback = await call_llm(sys_prompt, user_msg)
 
@@ -178,7 +179,7 @@ async def submit_record(
 
     # ── Standard pipeline: sync extraction, async feedback ──────────────────
     # Step 1: Safety check (sync)
-    sys_prompt, user_msg = safety_check_prompt(req.text)
+    sys_prompt, user_msg = safety_check_prompt(req.text, db=db)
     safety_response = await call_llm(sys_prompt, user_msg)
     safety_data = _parse_json_response(safety_response)
     risk_level = safety_data.get("risk_level", "safe")
@@ -186,7 +187,7 @@ async def submit_record(
         risk_level = "mild"
 
     # Step 2: BA Structured extraction (sync — user reviews result in modal)
-    sys_prompt, user_msg = structured_extraction_prompt(req.text)
+    sys_prompt, user_msg = structured_extraction_prompt(req.text, db=db)
     extraction_response = await call_llm(sys_prompt, user_msg)
     extraction_data = _parse_json_response(extraction_response)
 

@@ -1,6 +1,20 @@
 """All LLM prompts — reoriented from CBT to Behavioral Activation (BATD-R)."""
 
 
+def get_prompt(key: str, default: str, db=None) -> str:
+    """从数据库读取 prompt 内容；若数据库中不存在则回退到代码默认值。"""
+    if db is None:
+        return default
+    try:
+        from app.models import SystemPrompt
+        row = db.query(SystemPrompt).filter(SystemPrompt.key == key).first()
+        if row and row.content:
+            return row.content
+    except Exception:
+        pass
+    return default
+
+
 # --- Prompt 1: Safety Check (保留) ---
 
 SAFETY_CHECK_SYSTEM = """你是一个心理安全风险评估系统。你的任务是评估用户输入的安全风险等级。
@@ -19,9 +33,10 @@ SAFETY_CHECK_SYSTEM = """你是一个心理安全风险评估系统。你的任�
 - 如果无法判断，默认标记为"mild\""""
 
 
-def safety_check_prompt(raw_text: str) -> tuple[str, str]:
+def safety_check_prompt(raw_text: str, db=None) -> tuple[str, str]:
     """Returns (system_prompt, user_message) for safety check."""
-    return SAFETY_CHECK_SYSTEM, f"用户输入：{raw_text}"
+    system = get_prompt("safety_check", SAFETY_CHECK_SYSTEM, db)
+    return system, f"用户输入：{raw_text}"
 
 
 # --- Prompt 2: BA Structured Extraction ---
@@ -52,9 +67,10 @@ STRUCTURED_EXTRACTION_SYSTEM = """你是一个行为激活疗法（BA/BATD-R）�
 - 中文输出，简洁"""
 
 
-def structured_extraction_prompt(raw_text: str) -> tuple[str, str]:
+def structured_extraction_prompt(raw_text: str, db=None) -> tuple[str, str]:
     """Returns (system_prompt, user_message) for BA structured extraction."""
-    return STRUCTURED_EXTRACTION_SYSTEM, f"用户记录：{raw_text}"
+    system = get_prompt("structured_extraction", STRUCTURED_EXTRACTION_SYSTEM, db)
+    return system, f"用户记录：{raw_text}"
 
 
 # --- Prompt 3: BA Empathic Feedback ---
@@ -86,15 +102,17 @@ def empathic_feedback_prompt(
     pleasure_score: float,
     importance_score: float,
     recent_records_summary: str,
+    db=None,
 ) -> tuple[str, str]:
     """Returns (system_prompt, user_message) for BA empathic feedback."""
+    system = get_prompt("empathic_feedback", EMPATHIC_FEEDBACK_SYSTEM, db)
     user_message = (
         f"用户原始记录：{raw_text}\n"
         f"提取结果：活动={activity}，想法={thought}\n"
         f"愉悦度={pleasure_score}/10，重要性={importance_score}/10\n"
         f"近期活动摘要（最近3条）：{recent_records_summary}"
     )
-    return EMPATHIC_FEEDBACK_SYSTEM, user_message
+    return system, user_message
 
 
 # --- Prompt 4: Daily Summary ---
@@ -115,9 +133,10 @@ DAILY_SUMMARY_SYSTEM = """你是"小暖"，用户的行为激活伙伴。基于�
 - 中文输出"""
 
 
-def daily_summary_prompt(today_records_json: str) -> tuple[str, str]:
+def daily_summary_prompt(today_records_json: str, db=None) -> tuple[str, str]:
     """Returns (system_prompt, user_message) for daily summary."""
-    return DAILY_SUMMARY_SYSTEM, f"今日活动记录数据：\n{today_records_json}"
+    system = get_prompt("daily_summary", DAILY_SUMMARY_SYSTEM, db)
+    return system, f"今日活动记录数据：\n{today_records_json}"
 
 
 # --- Prompt 5: Weekly Summary ---
@@ -152,8 +171,10 @@ def weekly_summary_prompt(
     avg_pleasure: float,
     avg_importance: float,
     intensity_trend: str,
+    db=None,
 ) -> tuple[str, str]:
     """Returns (system_prompt, user_message) for weekly BA summary."""
+    system = get_prompt("weekly_summary", WEEKLY_SUMMARY_SYSTEM, db)
     user_message = (
         f"本周活动记录数据：\n{week_records_json}\n\n"
         f"统计摘要：\n"
@@ -162,7 +183,7 @@ def weekly_summary_prompt(
         f"- 平均重要性：{avg_importance:.1f}/10\n"
         f"- 情绪趋势：{intensity_trend}"
     )
-    return WEEKLY_SUMMARY_SYSTEM, user_message
+    return system, user_message
 
 
 # --- Prompt 6: BA Chatbot System Prompt ---
@@ -430,7 +451,7 @@ CHATBOT_SYSTEM_PROMPT = """你是一个行为激活治疗 App 中的伙伴角色
 不满足条件时不加。不标注模糊意向（"想多运动"）、假设语气、他人的活动。每次最多一个。"""
 
 
-def chatbot_system_prompt(user_state: dict, companion_name: str) -> str:
+def chatbot_system_prompt(user_state: dict, companion_name: str, db=None) -> str:
     """Build full chatbot system prompt with injected user state data."""
     import json
     state_text = f"""
@@ -490,4 +511,5 @@ def chatbot_system_prompt(user_state: dict, companion_name: str) -> str:
 - 本次应触发的对话类型：{user_state.get('active_triggers', [])}
   （如果列表不为空，请在对话开头自然地引入对应触发对话的内容；如果列表为空，根据用户的输入进入相应模式）"""
 
-    return CHATBOT_SYSTEM_PROMPT + state_text
+    base = get_prompt("chatbot", CHATBOT_SYSTEM_PROMPT, db)
+    return base + state_text

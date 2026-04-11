@@ -139,3 +139,13 @@ class CompanionSettings(Base):
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
     companion_name = Column(String, nullable=False, default="小暖")
     updated_at = Column(DateTime, default=localnow)
+
+
+class SystemPrompt(Base):
+    """LLM prompt 模板 — 可在 pgAdmin 中直接编辑 content 字段来调整模型行为"""
+    __tablename__ = "system_prompts"
+
+    key = Column(String, primary_key=True)   # e.g. "safety_check", "chatbot"
+    content = Column(Text, nullable=False)   # 完整的 system prompt 文本
+    description = Column(String, nullable=True)  # 简短说明，方便在 pgAdmin 里识别
+    updated_at = Column(DateTime, default=localnow)
