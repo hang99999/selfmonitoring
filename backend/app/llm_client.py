@@ -5,11 +5,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "modelscope")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com").rstrip("/")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY", "ms-214940d1-d52f-4c53-9209-d0eef7b5a4a2")
-LLM_MODEL = os.getenv("LLM_MODEL", "")
+MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 
 
 def _get_model() -> str:
@@ -17,8 +18,6 @@ def _get_model() -> str:
         return LLM_MODEL
     if LLM_PROVIDER == "anthropic":
         return "claude-sonnet-4-20250514"
-    if LLM_PROVIDER == "modelscope":
-        return os.getenv("MODELSCOPE_MODEL", "ZhipuAI/GLM-5")
     return "gpt-4o"
 
 
@@ -53,7 +52,7 @@ async def call_llm_chat(system_prompt: str, messages: list[dict]) -> str:
 
 
 async def _call_openai(system_prompt: str, user_message: str, model: str) -> str:
-    url = "https://api.openai.com/v1/chat/completions"
+    url = f"{OPENAI_BASE_URL}/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
@@ -131,7 +130,7 @@ async def _call_modelscope(system_prompt: str, user_message: str, model: str) ->
 # ── Multi-turn implementations ──────────────────────────────────────────────
 
 async def _call_openai_chat(system_prompt: str, messages: list[dict], model: str) -> str:
-    url = "https://api.openai.com/v1/chat/completions"
+    url = f"{OPENAI_BASE_URL}/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "Content-Type": "application/json",
