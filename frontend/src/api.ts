@@ -6,7 +6,7 @@ import type {
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
 // 开发时手机和电脑在同一 WiFi 下，指向电脑局域网 IP
-const BASE = 'http://47.239.225.34:8000';
+const BASE = 'http://47.239.197.238:8000';
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
