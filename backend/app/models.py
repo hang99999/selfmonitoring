@@ -17,6 +17,17 @@ class User(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     created_at = Column(DateTime, default=localnow)
+    participant_code = Column(String, nullable=True)   # e.g. "P001", set on unlock
+    is_unlocked = Column(Boolean, default=False)
+
+
+class AccessCode(Base):
+    """研究/付费邀请码 — 在 pgAdmin 的 access_codes 表中管理"""
+    __tablename__ = "access_codes"
+
+    code = Column(String, primary_key=True)      # e.g. "STUDY2024"
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
 
 
 class LifeDomain(Base):

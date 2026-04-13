@@ -189,4 +189,17 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ user_id: userId, companion_name: name }),
     }),
+
+  // --- Auth ---
+  unlock: (userId: string, participantCode: string, inviteCode: string) =>
+    request<{ ok: boolean; message: string; participant_code?: string; is_unlocked: boolean }>(
+      '/api/auth/unlock',
+      {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId, participant_code: participantCode, invite_code: inviteCode }),
+      }
+    ),
+
+  getUnlockStatus: (userId: string) =>
+    request<{ is_unlocked: boolean; participant_code: string | null }>(`/api/auth/status?user_id=${userId}`),
 };

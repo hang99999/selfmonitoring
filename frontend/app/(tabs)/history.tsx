@@ -1,0 +1,602 @@
+import { useState, useEffect, useCallback } from 'react';
+import {
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { api } from '../../src/api';
+import { useUserId } from '../../src/userStore';
+import type { DayStats, WeekStats, InsightReport } from '../../src/types';
+
+// ── Assessment scales ─────────────────────────────────────────────────────────
+
+type Severity = 'green' | 'yellow' | 'orange' | 'red';
+interface Interpretation { level: string; severity: Severity; desc: string; advice: string[]; }
+interface Scale {
+  id: string; name: string; subtitle: string; emoji: string;
+  timeframe: string; questions: string[]; options: string[];
+  maxScore: number;
+  displayScore: (raw: number) => number;
+  interpret: (raw: number) => Interpretation;
+}
+
+const SCALES: Scale[] = [
+  {
+    id: 'PHQ9', name: 'PHQ-9', subtitle: '抑郁筛查量表', emoji: '🌧️',
+    timeframe: '过去两周，您有多少时间受到以下症状的困扰？',
+    questions: [
+      '做事时提不起劲或没有兴趣', '感到心情低落、沮丧或绝望',
+      '入睡困难、睡不安稳或睡眠过多', '感觉疲倦或没有活力',
+      '食欲不振或吃太多',
+      '觉得自己很糟糕，或觉得自己是个失败的人，或让自己和家人失望',
+      '对事物专注有困难，例如阅读或看视频时',
+      '动作或说话变得迟缓，或正好相反，比平常更加烦躁坐立不安',
+      '有不如死掉或用某种方式伤害自己的念头',
+    ],
+    options: ['完全没有', '有几天', '超过一周', '几乎每天'],
+    maxScore: 27,
+    displayScore: s => s,
+    interpret: (s) => {
+      if (s <= 4) return { level: '无或极少', severity: 'green', desc: '目前没有明显的抑郁症状，继续保持健康的生活习惯。', advice: ['维持规律的作息和运动', '保持社交联系和有意义的活动', '定期关注自己的情绪状态'] };
+      if (s <= 9) return { level: '轻微抑郁', severity: 'yellow', desc: '存在一些轻微抑郁症状，建议积极行动改善状态。', advice: ['增加令自己有愉悦感的活动（行为激活）', '规律运动，每天至少30分钟', '与信任的人多交流分享'] };
+      if (s <= 14) return { level: '中度抑郁', severity: 'orange', desc: '存在中度抑郁症状，对日常生活可能已有一定影响。', advice: ['建议寻求心理咨询师的专业支持', '告知家人或亲密朋友你的状态', '可向医院心理科或精神科咨询'] };
+      if (s <= 19) return { level: '中重度抑郁', severity: 'red', desc: '存在较明显的抑郁症状，日常生活受到明显影响。', advice: ['请尽快预约心理科或精神科医生', '不要独自承受，告诉身边信任的人', '危机时拨打心理援助热线：400-161-9995'] };
+      return { level: '重度抑郁', severity: 'red', desc: '存在严重抑郁症状，需要立即寻求专业帮助。', advice: ['请立即联系精神科医生或前往医院', '危机援助热线：400-161-9995 / 400-821-1215', '请让身边的人陪伴你'] };
+    },
+  },
+  {
+    id: 'GAD7', name: 'GAD-7', subtitle: '焦虑筛查量表', emoji: '🌀',
+    timeframe: '过去两周，您有多少时间受到以下症状的困扰？',
+    questions: [
+      '感觉紧张、焦虑或烦躁', '不能停止或无法控制担忧', '对各种各样的事情过度担忧',
+      '很难放松下来', '由于不安而无法静坐', '变得容易烦恼或急躁',
+      '感到似乎将有可怕的事情发生而害怕',
+    ],
+    options: ['完全没有', '有几天', '超过一周', '几乎每天'],
+    maxScore: 21,
+    displayScore: s => s,
+    interpret: (s) => {
+      if (s <= 4) return { level: '极少焦虑', severity: 'green', desc: '目前焦虑水平在正常范围内。', advice: ['继续维持当前的放松习惯', '练习正念或冥想有助于长期保持', '关注生活中令你有意义感的事'] };
+      if (s <= 9) return { level: '轻微焦虑', severity: 'yellow', desc: '存在轻微焦虑症状，可以通过一些方式改善。', advice: ['尝试腹式呼吸或渐进式肌肉放松', '减少咖啡因和碎片化刷手机的习惯', '把担忧写下来，区分可控与不可控的事'] };
+      if (s <= 14) return { level: '中度焦虑', severity: 'orange', desc: '存在中度焦虑症状，建议积极寻求支持。', advice: ['建议预约心理咨询', '认知行为疗法（CBT）对焦虑有良好效果', '与家人或朋友分享你的感受'] };
+      return { level: '重度焦虑', severity: 'red', desc: '存在明显焦虑症状，请尽快寻求专业帮助。', advice: ['建议尽快就医（精神科/心理科）', '告诉身边信任的人你的状态', '焦虑是可以治疗的，请不要独自承受'] };
+    },
+  },
+  {
+    id: 'WHO5', name: 'WHO-5', subtitle: '幸福感指数', emoji: '🌱',
+    timeframe: '过去两周，以下描述有多少时间符合您的感受？',
+    questions: [
+      '我感到开心且情绪良好', '我感到平静且放松', '我感到活力充沛且精神饱满',
+      '睡醒后我感到清爽且充分休息', '我的日常生活充满乐趣',
+    ],
+    options: ['完全没有', '偶尔', '有时候', '超过半数时间', '大部分时间', '所有时间'],
+    maxScore: 25,
+    displayScore: s => s * 4,
+    interpret: (s) => {
+      const pct = s * 4;
+      if (pct >= 68) return { level: '幸福感良好', severity: 'green', desc: `幸福感指数 ${pct}/100，整体心理状态积极良好，继续保持！`, advice: ['继续维持带来幸福感的活动和人际关系', '将好的习惯和经验分享给身边的人'] };
+      if (pct >= 52) return { level: '幸福感尚可', severity: 'yellow', desc: `幸福感指数 ${pct}/100，整体还不错，但有一些值得改善的空间。`, advice: ['尝试增加日常中令你感到快乐的小事', '关注睡眠质量和规律作息'] };
+      if (pct >= 28) return { level: '幸福感偏低', severity: 'orange', desc: `幸福感指数 ${pct}/100，建议关注并改善当前的情绪状态。`, advice: ['进行行为激活，计划并执行有意义的活动', '考虑咨询专业心理咨询师'] };
+      return { level: '幸福感较差', severity: 'red', desc: `幸福感指数 ${pct}/100，建议寻求专业心理健康支持。`, advice: ['请预约心理咨询或精神科评估', '心理援助热线：400-161-9995'] };
+    },
+  },
+];
+
+const SEVERITY_COLOR: Record<Severity, { bg: string; text: string; border: string }> = {
+  green:  { bg: '#f0fdf4', text: '#15803d', border: '#86efac' },
+  yellow: { bg: '#fefce8', text: '#a16207', border: '#fde047' },
+  orange: { bg: '#fff7ed', text: '#c2410c', border: '#fdba74' },
+  red:    { bg: '#fef2f2', text: '#b91c1c', border: '#fca5a5' },
+};
+
+// ── Assessment panel ──────────────────────────────────────────────────────────
+
+type AStep =
+  | { type: 'list' }
+  | { type: 'taking'; scale: Scale; answers: number[]; current: number }
+  | { type: 'result'; scale: Scale; score: number; answers: number[] };
+
+function AssessmentPanel() {
+  const [step, setStep] = useState<AStep>({ type: 'list' });
+
+  const start = (scale: Scale) => setStep({ type: 'taking', scale, answers: [], current: 0 });
+
+  const handleAnswer = (value: number) => {
+    if (step.type !== 'taking') return;
+    const newAnswers = [...step.answers, value];
+    if (newAnswers.length === step.scale.questions.length) {
+      const score = newAnswers.reduce((a, b) => a + b, 0);
+      setStep({ type: 'result', scale: step.scale, score, answers: newAnswers });
+    } else {
+      setStep({ ...step, answers: newAnswers, current: step.current + 1 });
+    }
+  };
+
+  if (step.type === 'list') {
+    return (
+      <View>
+        <Text className="text-sm text-gray-500 mb-4 leading-relaxed">
+          以下量表来自国际通用的心理健康筛查工具，每次约需 2-3 分钟。
+          测评结果<Text className="font-semibold">仅供参考</Text>，不能替代专业诊断。
+        </Text>
+        {SCALES.map(scale => (
+          <TouchableOpacity
+            key={scale.id}
+            onPress={() => start(scale)}
+            className="w-full rounded-2xl p-4 mb-3 flex-row items-center"
+            style={cardStyle}
+          >
+            <Text className="text-3xl mr-3">{scale.emoji}</Text>
+            <View className="flex-1">
+              <Text className="font-bold text-gray-800">{scale.name}</Text>
+              <Text className="text-sm text-gray-500">{scale.subtitle}</Text>
+            </View>
+            <View className="bg-gray-100 px-2 py-1 rounded-lg">
+              <Text className="text-xs text-gray-500">{scale.questions.length} 题</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+        <Text className="text-xs text-gray-400 text-center mt-2">
+          如有心理困扰，请拨打援助热线 400-161-9995
+        </Text>
+      </View>
+    );
+  }
+
+  if (step.type === 'taking') {
+    const { scale, current } = step;
+    const progress = Math.round((current / scale.questions.length) * 100);
+    return (
+      <View>
+        <View className="flex-row items-center mb-5">
+          <TouchableOpacity onPress={() => setStep({ type: 'list' })} className="mr-3">
+            <Text className="text-gray-400 text-sm">← 返回</Text>
+          </TouchableOpacity>
+          <View className="flex-1">
+            <View className="flex-row justify-between mb-1">
+              <Text className="text-xs text-gray-400">{scale.name}</Text>
+              <Text className="text-xs text-gray-400">第 {current + 1} / {scale.questions.length} 题</Text>
+            </View>
+            <View className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <View className="h-1.5 bg-orange-400 rounded-full" style={{ width: `${progress}%` }} />
+            </View>
+          </View>
+        </View>
+
+        <Text className="text-xs text-gray-400 mb-2">{scale.timeframe}</Text>
+        <Text className="text-base font-bold text-gray-800 mb-5 leading-snug">
+          {scale.questions[current]}
+        </Text>
+
+        {scale.options.map((opt, i) => (
+          <TouchableOpacity
+            key={i}
+            onPress={() => handleAnswer(i)}
+            className="w-full flex-row items-center px-4 py-3.5 rounded-xl border border-gray-200 bg-white mb-2"
+          >
+            <View className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3" />
+            <Text className="text-sm text-gray-700">{opt}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  }
+
+  if (step.type === 'result') {
+    const { scale, score, answers } = step;
+    const displayScore = scale.displayScore(score);
+    const interp = scale.interpret(score);
+    const style = SEVERITY_COLOR[interp.severity];
+    const maxDisplay = scale.id === 'WHO5' ? 100 : scale.maxScore;
+    const hasSelfHarmNote = scale.id === 'PHQ9' && answers[8] > 0;
+
+    return (
+      <View>
+        <TouchableOpacity onPress={() => setStep({ type: 'list' })} className="mb-5">
+          <Text className="text-gray-400 text-sm">← 返回列表</Text>
+        </TouchableOpacity>
+
+        <View className="items-center mb-5">
+          <View
+            style={{ backgroundColor: style.bg, borderColor: style.border }}
+            className="w-28 h-28 rounded-full border-2 items-center justify-center mb-3"
+          >
+            <Text style={{ color: style.text }} className="text-4xl font-bold">{displayScore}</Text>
+            <Text style={{ color: style.text }} className="text-xs opacity-75">/ {maxDisplay}</Text>
+          </View>
+          <Text className="text-xs text-gray-400 mb-2">{scale.name} {scale.subtitle}</Text>
+          <View style={{ backgroundColor: style.bg }} className="px-4 py-1.5 rounded-full">
+            <Text style={{ color: style.text }} className="font-semibold text-sm">{interp.level}</Text>
+          </View>
+        </View>
+
+        <Text className="text-sm text-gray-600 leading-relaxed mb-4 text-center">{interp.desc}</Text>
+
+        <View className="bg-gray-50 rounded-2xl p-4 mb-4">
+          <Text className="text-sm font-semibold text-gray-700 mb-2">建议</Text>
+          {interp.advice.map((a, i) => (
+            <View key={i} className="flex-row mb-1.5">
+              <Text className="text-orange-400 font-bold mr-2">•</Text>
+              <Text className="text-sm text-gray-600 flex-1 leading-relaxed">{a}</Text>
+            </View>
+          ))}
+        </View>
+
+        {hasSelfHarmNote && (
+          <View className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
+            <Text className="text-sm font-bold text-red-700 mb-1">❤️ 重要：请寻求帮助</Text>
+            <Text className="text-sm text-red-600 mb-2">你提到了有伤害自己的念头，请立即联系：</Text>
+            <Text className="text-sm font-medium text-red-700">• 全国心理援助热线：400-161-9995</Text>
+            <Text className="text-sm font-medium text-red-700">• 北京危机热线：010-82951332</Text>
+            <Text className="text-sm font-medium text-red-700">• 24小时生命热线：400-821-1215</Text>
+          </View>
+        )}
+
+        <Text className="text-xs text-gray-400 text-center mb-5">
+          本测评仅供参考，不能替代专业诊断。如有困扰请咨询专业人士。
+        </Text>
+
+        <View className="flex-row gap-3">
+          <TouchableOpacity onPress={() => start(scale)} className="flex-1 py-3 bg-gray-100 rounded-2xl items-center">
+            <Text className="text-gray-700 font-medium text-sm">重新测评</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setStep({ type: 'list' })} className="flex-1 py-3 bg-orange-500 rounded-2xl items-center">
+            <Text className="text-white font-medium text-sm">其他测评</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  return null;
+}
+
+// ── Bar component ─────────────────────────────────────────────────────────────
+
+function Bar({ value, max = 10, color = '#fb923c' }: { value: number | null | undefined; max?: number; color?: string }) {
+  const pct = value ? Math.round((value / max) * 100) : 0;
+  return (
+    <View className="h-2 bg-gray-100 rounded-full flex-1">
+      {pct > 0 && <View className="h-2 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />}
+    </View>
+  );
+}
+
+const cardStyle = { backgroundColor: '#ffffff', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } };
+
+// ── InsightCard ───────────────────────────────────────────────────────────────
+
+const EMOTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  焦虑: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
+  低落: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
+  悲伤: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
+  愉快: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
+  平静: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
+  愤怒: { bg: '#ffe4e6', text: '#9f1239', border: '#fda4af' },
+  充实: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
+  感恩: { bg: '#ccfbf1', text: '#134e4a', border: '#5eead4' },
+};
+const defaultEmotion = { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' };
+
+function InsightCard({ report, loading, type }: {
+  report: InsightReport | null; loading: boolean; type: 'daily' | 'weekly';
+}) {
+  if (loading) {
+    return (
+      <View className="rounded-2xl p-5 mb-4" style={cardStyle}>
+        <View className="h-4 bg-gray-200 rounded w-1/3 mb-4" />
+        <View className="h-3 bg-gray-100 rounded w-full mb-2" />
+        <View className="h-3 bg-gray-100 rounded w-5/6 mb-2" />
+        <View className="h-3 bg-gray-100 rounded w-4/6" />
+      </View>
+    );
+  }
+  if (!report) return null;
+
+  return (
+    <View className="rounded-2xl p-5 mb-4" style={cardStyle}>
+      <Text className="text-base font-bold text-gray-800 mb-3">
+        {type === 'daily' ? '今日总结' : '本周总结'}
+      </Text>
+      <Text className="text-sm text-gray-600 leading-relaxed">{report.content}</Text>
+
+      {type === 'weekly' && Array.isArray(report.patterns) && report.patterns.length > 0 && (
+        <View className="mt-4">
+          <Text className="text-sm font-semibold text-gray-700 mb-2">情绪模式</Text>
+          {report.patterns.map((p, i) => {
+            const c = EMOTION_COLORS[p.emotion] ?? defaultEmotion;
+            return (
+              <View key={i} className="p-3 rounded-xl border mb-2"
+                style={{ backgroundColor: c.bg, borderColor: c.border }}>
+                <View className="flex-row justify-between mb-1">
+                  <Text style={{ color: c.text }} className="font-medium text-sm">{p.trigger}</Text>
+                  <Text style={{ color: c.text }} className="text-xs opacity-75">出现 {p.frequency} 次</Text>
+                </View>
+                <Text style={{ color: c.text }} className="text-xs opacity-80">{p.insight}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+
+      {type === 'weekly' && Array.isArray(report.cbt_suggestions) && report.cbt_suggestions.length > 0 && (
+        <View className="mt-4">
+          <Text className="text-sm font-semibold text-gray-700 mb-2">CBT 建议</Text>
+          {report.cbt_suggestions.map((s, i) => (
+            <View key={i} className="flex-row mb-2">
+              <View className="w-5 h-5 rounded-full bg-orange-100 items-center justify-center mr-2 mt-0.5">
+                <Text className="text-xs text-orange-600 font-bold">{i + 1}</Text>
+              </View>
+              <Text className="text-sm text-gray-600 flex-1 leading-relaxed">{s}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+type MainTab = 'stats' | 'summary' | 'assessment';
+type StatsTab = 'today' | 'week';
+
+export default function HistoryScreen() {
+  const userId = useUserId();
+  const [mainTab, setMainTab] = useState<MainTab>('stats');
+  const [statsTab, setStatsTab] = useState<StatsTab>('today');
+  const [dayStats, setDayStats] = useState<DayStats | null>(null);
+  const [weekStats, setWeekStats] = useState<WeekStats | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [dailyInsight, setDailyInsight] = useState<InsightReport | null>(null);
+  const [weeklyInsight, setWeeklyInsight] = useState<InsightReport | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [insightError, setInsightError] = useState('');
+
+  const loadStats = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (statsTab === 'today') {
+        setDayStats(await api.getStatsToday(userId));
+      } else {
+        setWeekStats(await api.getStatsWeek(userId));
+      }
+    } finally { setLoading(false); }
+  }, [statsTab]);
+
+  useEffect(() => {
+    if (mainTab === 'stats') loadStats();
+  }, [mainTab, statsTab, loadStats]);
+
+  const handleDailyInsight = async () => {
+    setDailyLoading(true); setInsightError('');
+    try { setDailyInsight(await api.getDailyInsight(userId)); }
+    catch (err) { setInsightError(err instanceof Error ? err.message : '获取失败'); }
+    finally { setDailyLoading(false); }
+  };
+
+  const handleWeeklyInsight = async () => {
+    setWeeklyLoading(true); setInsightError('');
+    try { setWeeklyInsight(await api.getWeeklyInsight(userId)); }
+    catch (err) { setInsightError(err instanceof Error ? err.message : '获取失败'); }
+    finally { setWeeklyLoading(false); }
+  };
+
+  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+
+  const mainTabs: { key: MainTab; label: string }[] = [
+    { key: 'stats', label: '📊 数据' },
+    { key: 'summary', label: '💡 总结' },
+    { key: 'assessment', label: '📋 测评' },
+  ];
+
+  return (
+    <SafeAreaView className="flex-1 bg-orange-50">
+      <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
+        <Text className="text-xl font-bold text-gray-800 mt-6 mb-4">反思</Text>
+
+        {/* Main tab selector */}
+        <View className="flex-row bg-gray-100 rounded-2xl p-1 mb-6">
+          {mainTabs.map(t => (
+            <TouchableOpacity
+              key={t.key}
+              onPress={() => setMainTab(t.key)}
+              className="flex-1 py-2 rounded-xl items-center"
+              style={mainTab === t.key ? { backgroundColor: '#ffffff', elevation: 1 } : {}}
+            >
+              <Text className={`text-xs font-medium ${mainTab === t.key ? 'text-orange-500' : 'text-gray-400'}`}>
+                {t.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* ── 数据 tab ── */}
+        {mainTab === 'stats' && (
+          <>
+            <View className="flex-row gap-2 mb-5">
+              {(['today', 'week'] as StatsTab[]).map(t => (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setStatsTab(t)}
+                  className={`px-4 py-1.5 rounded-full ${statsTab === t ? 'bg-orange-500' : 'bg-white'}`}
+                >
+                  <Text className={`text-sm font-medium ${statsTab === t ? 'text-white' : 'text-gray-500'}`}>
+                    {t === 'today' ? '今日' : '本周'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {loading && <ActivityIndicator size="large" color="#f97316" style={{ marginTop: 40 }} />}
+
+            {!loading && statsTab === 'today' && dayStats && (
+              <View>
+                <View className="flex-row gap-3 mb-5">
+                  {[
+                    { label: '今日记录', value: dayStats.count, unit: '条', color: '#f97316' },
+                    { label: '平均愉悦度', value: dayStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
+                    { label: '平均重要性', value: dayStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
+                  ].map(card => (
+                    <View key={card.label} className="flex-1 rounded-2xl px-2 py-4 items-center" style={cardStyle}>
+                      <Text style={{ color: card.color }} className="text-xl font-bold">
+                        {card.value}<Text className="text-xs font-normal text-gray-400">{card.unit}</Text>
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-1 text-center">{card.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                {dayStats.records.length > 0 && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-3">今日记录</Text>
+                    {dayStats.records.map((r, i) => (
+                      <View key={i} className="mb-3 pb-3 border-b border-gray-50 last:border-0">
+                        <View className="flex-row justify-between mb-1">
+                          <Text className="text-sm font-medium text-gray-800 flex-1 mr-2">{r.activity || '活动'}</Text>
+                          <Text className="text-xs text-gray-400">
+                            {new Date(r.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                          </Text>
+                        </View>
+                        {r.thought && <Text className="text-xs text-gray-500 mb-1">{r.thought}</Text>}
+                        <View className="flex-row gap-4">
+                          {r.pleasure_score != null && (
+                            <View className="flex-row items-center gap-1.5 flex-1">
+                              <Text className="text-xs text-orange-500">愉悦</Text>
+                              <Bar value={r.pleasure_score} color="#fb923c" />
+                              <Text className="text-xs text-gray-400 w-5">{r.pleasure_score}</Text>
+                            </View>
+                          )}
+                          {r.importance_score != null && (
+                            <View className="flex-row items-center gap-1.5 flex-1">
+                              <Text className="text-xs text-indigo-500">重要</Text>
+                              <Bar value={r.importance_score} color="#818cf8" />
+                              <Text className="text-xs text-gray-400 w-5">{r.importance_score}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {dayStats.records.length === 0 && (
+                  <View className="items-center py-10">
+                    <Text className="text-3xl mb-2">📝</Text>
+                    <Text className="text-gray-500 text-sm">今天还没有记录</Text>
+                    <Text className="text-gray-400 text-xs mt-1">回到主页开始记录吧</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {!loading && statsTab === 'week' && weekStats && (
+              <View>
+                <View className="flex-row gap-3 mb-5">
+                  {[
+                    { label: '本周记录', value: weekStats.total_count, unit: '条', color: '#f97316' },
+                    { label: '平均愉悦度', value: weekStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
+                    { label: '平均重要性', value: weekStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
+                  ].map(card => (
+                    <View key={card.label} className="flex-1 rounded-2xl px-2 py-4 items-center" style={cardStyle}>
+                      <Text style={{ color: card.color }} className="text-xl font-bold">
+                        {card.value}<Text className="text-xs font-normal text-gray-400">{card.unit}</Text>
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-1 text-center">{card.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View className="bg-white rounded-2xl p-4 mb-4">
+                  <Text className="text-sm font-semibold text-gray-700 mb-4">每日愉悦度趋势</Text>
+                  {weekStats.daily_data.map(day => {
+                    const d = new Date(day.date + 'T00:00:00');
+                    return (
+                      <View key={day.date} className="flex-row items-center mb-2">
+                        <Text className="text-xs text-gray-400 w-8">周{weekDays[d.getDay()]}</Text>
+                        <Bar value={day.avg_pleasure} color="#fb923c" />
+                        <Text className="text-xs text-gray-500 w-8 text-right">
+                          {day.avg_pleasure ? day.avg_pleasure.toFixed(1) : '—'}
+                        </Text>
+                        <Text className="text-xs text-gray-300 w-7 text-right">{day.count}条</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                {Object.keys(weekStats.emotion_distribution).length > 0 && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-3">情绪分布</Text>
+                    {Object.entries(weekStats.emotion_distribution)
+                      .sort(([, a], [, b]) => b - a)
+                      .slice(0, 5)
+                      .map(([emotion, count]) => (
+                        <View key={emotion} className="flex-row items-center mb-1.5">
+                          <Text className="text-sm text-gray-600 w-14">{emotion}</Text>
+                          <View className="flex-1 mx-2">
+                            <Bar value={count} max={weekStats.total_count} color="#fdba74" />
+                          </View>
+                          <Text className="text-xs text-gray-400 w-5">{count}</Text>
+                        </View>
+                      ))}
+                  </View>
+                )}
+              </View>
+            )}
+          </>
+        )}
+
+        {/* ── 总结 tab ── */}
+        {mainTab === 'summary' && (
+          <View>
+            <Text className="text-sm text-gray-500 mb-4 leading-relaxed">
+              让 AI 帮你回顾今天或本周的行为与情绪模式。
+            </Text>
+            <View className="flex-row gap-3 mb-4">
+              <TouchableOpacity
+                onPress={handleDailyInsight}
+                disabled={dailyLoading}
+                className="flex-1 py-3 rounded-xl items-center"
+                style={{ backgroundColor: '#fff7ed', opacity: dailyLoading ? 0.6 : 1 }}
+              >
+                <Text className="text-orange-600 font-medium text-sm">
+                  {dailyLoading ? '生成中...' : '今日总结'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleWeeklyInsight}
+                disabled={weeklyLoading}
+                className="flex-1 py-3 rounded-xl items-center"
+                style={{ backgroundColor: '#fff7ed', opacity: weeklyLoading ? 0.6 : 1 }}
+              >
+                <Text className="text-orange-600 font-medium text-sm">
+                  {weeklyLoading ? '生成中...' : '本周总结'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {insightError ? (
+              <Text className="text-sm text-red-500 text-center mb-3">{insightError}</Text>
+            ) : null}
+
+            {!dailyInsight && !weeklyInsight && !dailyLoading && !weeklyLoading && (
+              <View className="items-center py-12">
+                <Text className="text-4xl mb-3">💡</Text>
+                <Text className="text-gray-500 text-sm">点击上方按钮生成 AI 总结</Text>
+                <Text className="text-gray-400 text-xs mt-1">需要有记录数据才能生成</Text>
+              </View>
+            )}
+
+            <InsightCard report={dailyInsight} loading={dailyLoading} type="daily" />
+            <InsightCard report={weeklyInsight} loading={weeklyLoading} type="weekly" />
+          </View>
+        )}
+
+        {/* ── 测评 tab ── */}
+        {mainTab === 'assessment' && <AssessmentPanel />}
+
+        <View className="h-8" />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

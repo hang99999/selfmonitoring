@@ -220,3 +220,18 @@ class MonthStatsResponse(BaseModel):
     avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
+
+
+# --- Auth Schemas ---
+
+class UnlockRequest(BaseModel):
+    user_id: str
+    participant_code: str
+    invite_code: str
+
+
+class UnlockResponse(BaseModel):
+    ok: bool
+    message: str
+    participant_code: Optional[str] = None
+    is_unlocked: bool = False

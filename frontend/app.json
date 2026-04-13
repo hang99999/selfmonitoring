@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "小暖",
+    "slug": "xiaonuan-ba",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "xiaonuan",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#fff7ed"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.xiaonuan.ba"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#fff7ed"
+      },
+      "package": "com.xiaonuan.ba"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}

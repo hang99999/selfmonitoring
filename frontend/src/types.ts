@@ -5,18 +5,13 @@ export interface MoodRecord {
   raw_text: string;
   activity: string;
   thought: string;
-  // BA 核心：愉悦度与重要性双维度评分
   pleasure_score?: number;
   importance_score?: number;
   planned_activity_id?: string;
   emotion_type: string;
   emotion_intensity: number;
-  voice_valence?: number;
-  voice_arousal?: number;
-  combined_emotion_score?: number;
   ai_immediate_feedback: string;
   risk_level: 'safe' | 'mild' | 'high' | 'crisis';
-  cognitive_distortion?: string;
   confirmed: boolean;
 }
 
@@ -35,8 +30,6 @@ export interface EmotionPattern {
   frequency: number;
   insight: string;
 }
-
-// --- Activity Library Types (BATD-R Form 2 & 3) ---
 
 export interface LifeDomain {
   id: string;
@@ -72,8 +65,8 @@ export interface PlannedActivity {
   activity_name: string;
   life_domain_id?: string;
   value_id?: string;
-  scheduled_date: string;   // YYYY-MM-DD
-  scheduled_time?: string;  // HH:MM
+  scheduled_date: string;
+  scheduled_time?: string;
   completed: boolean;
   completion_record_id?: string;
   created_at: string;
@@ -86,8 +79,6 @@ export interface DailyMood {
   mood_score: number;
   created_at: string;
 }
-
-// --- Chatbot Types ---
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -115,8 +106,6 @@ export interface UserState {
   active_triggers: string[];
 }
 
-// --- Stats Types ---
-
 export interface DayStats {
   records: {
     timestamp: string;
@@ -125,6 +114,7 @@ export interface DayStats {
     pleasure_score?: number;
     importance_score?: number;
     activity?: string;
+    thought?: string;
   }[];
   count: number;
   avg_intensity: number;
@@ -141,22 +131,6 @@ export interface WeekStats {
     count: number;
     dominant_emotion: string;
     daily_mood_score?: number;
-  }[];
-  total_count: number;
-  emotion_distribution: Record<string, number>;
-  avg_intensity: number;
-  avg_pleasure?: number;
-  avg_importance?: number;
-}
-
-export interface MonthStats {
-  daily_data: {
-    date: string;
-    avg_intensity: number;
-    avg_pleasure?: number;
-    avg_importance?: number;
-    count: number;
-    dominant_emotion: string;
   }[];
   total_count: number;
   emotion_distribution: Record<string, number>;

@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, SessionLocal
-from app.models import Base, User, SystemPrompt
-from app.routers import records, insights, stats, activities, chatbot
+from app.models import Base, User, SystemPrompt, AccessCode
+from app.routers import records, insights, stats, activities, chatbot, auth
 from app.prompts import (
     SAFETY_CHECK_SYSTEM,
     STRUCTURED_EXTRACTION_SYSTEM,
@@ -50,6 +50,11 @@ async def lifespan(app: FastAPI):
 
         # Seed system prompts (only insert if key does not exist yet)
         _seed_prompts(db)
+
+        # Seed default access code
+        if not db.query(AccessCode).first():
+            db.add(AccessCode(code="STUDY2024", description="研究用邀请码", is_active=True))
+            db.commit()
     finally:
         db.close()
     yield
@@ -96,6 +101,7 @@ app.include_router(insights.router)
 app.include_router(stats.router)
 app.include_router(activities.router)
 app.include_router(chatbot.router)
+app.include_router(auth.router)
 
 
 @app.get("/")
