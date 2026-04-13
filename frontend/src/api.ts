@@ -1,5 +1,5 @@
 import type {
-  MoodRecord, InsightReport, DayStats, WeekStats,
+  MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatResponse, UserState,
 } from './types';
@@ -73,6 +73,9 @@ export const api = {
 
   getStatsWeek: (userId = 'default_user') =>
     request<WeekStats>(`/api/stats/week?user_id=${userId}`),
+
+  getStatsMonth: (userId = 'default_user') =>
+    request<MonthStats>(`/api/stats/month?user_id=${userId}`),
 
   // --- Life Domains ---
   getDomains: (userId = 'default_user') =>

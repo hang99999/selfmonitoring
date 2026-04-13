@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { DayStats, WeekStats, InsightReport } from '../../src/types';
+import type { DayStats, WeekStats, MonthStats, InsightReport } from '../../src/types';
 
 // ── Assessment scales ─────────────────────────────────────────────────────────
 
@@ -263,6 +265,77 @@ function Bar({ value, max = 10, color = '#fb923c' }: { value: number | null | un
 
 const cardStyle = { backgroundColor: '#ffffff', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } };
 
+// ── Line Chart ────────────────────────────────────────────────────────────────
+
+interface ChartPoint { label: string; pleasure?: number | null; importance?: number | null; }
+
+function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: number }) {
+  const { width } = useWindowDimensions();
+  const chartW = width - 64;
+  const chartH = 170;
+  const PL = 26, PR = 8, PT = 10, PB = 24;
+  const innerW = chartW - PL - PR;
+  const innerH = chartH - PB - PT;
+  const n = data.length;
+  if (n === 0) return null;
+
+  const xOf = (i: number) => PL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const yOf = (v: number) => PT + innerH - (v / 10) * innerH;
+
+  const buildPath = (key: 'pleasure' | 'importance') =>
+    data.reduce<string[]>((acc, p, i) => {
+      const v = p[key];
+      if (v != null) acc.push(`${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`);
+      return acc;
+    }, []).join(' ');
+
+  const pleasurePath = buildPath('pleasure');
+  const importancePath = buildPath('importance');
+  const gridLines = [2, 4, 6, 8, 10];
+
+  return (
+    <View>
+      <Svg width={chartW} height={chartH}>
+        {gridLines.map(v => (
+          <Line key={v} x1={PL} y1={yOf(v)} x2={chartW - PR} y2={yOf(v)}
+            stroke="#f3f4f6" strokeWidth={1} />
+        ))}
+        {gridLines.map(v => (
+          <SvgText key={v} x={PL - 4} y={yOf(v) + 4}
+            fontSize={8} fill="#d1d5db" textAnchor="end">{v}</SvgText>
+        ))}
+        {data.map((p, i) => {
+          if (i % showEvery !== 0 && i !== n - 1) return null;
+          return (
+            <SvgText key={i} x={xOf(i)} y={chartH - 4}
+              fontSize={8} fill="#9ca3af" textAnchor="middle">{p.label}</SvgText>
+          );
+        })}
+        {pleasurePath.length > 0 && (
+          <Polyline points={pleasurePath} fill="none" stroke="#fb923c" strokeWidth={2} strokeLinejoin="round" />
+        )}
+        {importancePath.length > 0 && (
+          <Polyline points={importancePath} fill="none" stroke="#818cf8" strokeWidth={2} strokeLinejoin="round" />
+        )}
+        {data.map((p, i) => (
+          <>{p.pleasure != null && <Circle key={`p${i}`} cx={xOf(i)} cy={yOf(p.pleasure)} r={3} fill="#fb923c" />}
+            {p.importance != null && <Circle key={`m${i}`} cx={xOf(i)} cy={yOf(p.importance)} r={3} fill="#818cf8" />}</>
+        ))}
+      </Svg>
+      <View className="flex-row gap-4 justify-center mt-1 mb-1">
+        <View className="flex-row items-center gap-1.5">
+          <View style={{ width: 12, height: 2, backgroundColor: '#fb923c', borderRadius: 1 }} />
+          <Text className="text-xs text-gray-400">愉悦感</Text>
+        </View>
+        <View className="flex-row items-center gap-1.5">
+          <View style={{ width: 12, height: 2, backgroundColor: '#818cf8', borderRadius: 1 }} />
+          <Text className="text-xs text-gray-400">重要性</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ── InsightCard ───────────────────────────────────────────────────────────────
 
 const EMOTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -338,7 +411,7 @@ function InsightCard({ report, loading, type }: {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 type MainTab = 'stats' | 'summary' | 'assessment';
-type StatsTab = 'today' | 'week';
+type StatsTab = 'today' | 'week' | 'month';
 
 export default function HistoryScreen() {
   const userId = useUserId();
@@ -346,6 +419,7 @@ export default function HistoryScreen() {
   const [statsTab, setStatsTab] = useState<StatsTab>('today');
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [weekStats, setWeekStats] = useState<WeekStats | null>(null);
+  const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [dailyInsight, setDailyInsight] = useState<InsightReport | null>(null);
   const [weeklyInsight, setWeeklyInsight] = useState<InsightReport | null>(null);
@@ -358,8 +432,10 @@ export default function HistoryScreen() {
     try {
       if (statsTab === 'today') {
         setDayStats(await api.getStatsToday(userId));
-      } else {
+      } else if (statsTab === 'week') {
         setWeekStats(await api.getStatsWeek(userId));
+      } else {
+        setMonthStats(await api.getStatsMonth(userId));
       }
     } finally { setLoading(false); }
   }, [statsTab]);
@@ -415,14 +491,14 @@ export default function HistoryScreen() {
         {mainTab === 'stats' && (
           <>
             <View className="flex-row gap-2 mb-5">
-              {(['today', 'week'] as StatsTab[]).map(t => (
+              {([['today', '今日'], ['week', '本周'], ['month', '本月']] as [StatsTab, string][]).map(([t, label]) => (
                 <TouchableOpacity
                   key={t}
                   onPress={() => setStatsTab(t)}
                   className={`px-4 py-1.5 rounded-full ${statsTab === t ? 'bg-orange-500' : 'bg-white'}`}
                 >
                   <Text className={`text-sm font-medium ${statsTab === t ? 'text-white' : 'text-gray-500'}`}>
-                    {t === 'today' ? '今日' : '本周'}
+                    {label}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -446,6 +522,20 @@ export default function HistoryScreen() {
                     </View>
                   ))}
                 </View>
+
+                {dayStats.records.length > 1 && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-3">今日趋势</Text>
+                    <LineChart
+                      data={dayStats.records.map(r => ({
+                        label: new Date(r.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+                        pleasure: r.pleasure_score,
+                        importance: r.importance_score,
+                      }))}
+                      showEvery={1}
+                    />
+                  </View>
+                )}
 
                 {dayStats.records.length > 0 && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
@@ -508,20 +598,14 @@ export default function HistoryScreen() {
                 </View>
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-4">每日愉悦度趋势</Text>
-                  {weekStats.daily_data.map(day => {
-                    const d = new Date(day.date + 'T00:00:00');
-                    return (
-                      <View key={day.date} className="flex-row items-center mb-2">
-                        <Text className="text-xs text-gray-400 w-8">周{weekDays[d.getDay()]}</Text>
-                        <Bar value={day.avg_pleasure} color="#fb923c" />
-                        <Text className="text-xs text-gray-500 w-8 text-right">
-                          {day.avg_pleasure ? day.avg_pleasure.toFixed(1) : '—'}
-                        </Text>
-                        <Text className="text-xs text-gray-300 w-7 text-right">{day.count}条</Text>
-                      </View>
-                    );
-                  })}
+                  <Text className="text-sm font-semibold text-gray-700 mb-3">本周趋势</Text>
+                  <LineChart
+                    data={weekStats.daily_data.map(day => {
+                      const d = new Date(day.date + 'T00:00:00');
+                      return { label: `周${weekDays[d.getDay()]}`, pleasure: day.avg_pleasure, importance: day.avg_importance };
+                    })}
+                    showEvery={1}
+                  />
                 </View>
 
                 {Object.keys(weekStats.emotion_distribution).length > 0 && (
@@ -539,6 +623,62 @@ export default function HistoryScreen() {
                           <Text className="text-xs text-gray-400 w-5">{count}</Text>
                         </View>
                       ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {!loading && statsTab === 'month' && monthStats && (
+              <View>
+                <View className="flex-row gap-3 mb-5">
+                  {[
+                    { label: '本月记录', value: monthStats.total_count, unit: '条', color: '#f97316' },
+                    { label: '平均愉悦度', value: monthStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
+                    { label: '平均重要性', value: monthStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
+                  ].map(card => (
+                    <View key={card.label} className="flex-1 rounded-2xl px-2 py-4 items-center" style={cardStyle}>
+                      <Text style={{ color: card.color }} className="text-xl font-bold">
+                        {card.value}<Text className="text-xs font-normal text-gray-400">{card.unit}</Text>
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-1 text-center">{card.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View className="bg-white rounded-2xl p-4 mb-4">
+                  <Text className="text-sm font-semibold text-gray-700 mb-3">本月趋势（近30天）</Text>
+                  <LineChart
+                    data={monthStats.daily_data.map(day => ({
+                      label: `${new Date(day.date + 'T00:00:00').getMonth() + 1}/${new Date(day.date + 'T00:00:00').getDate()}`,
+                      pleasure: day.avg_pleasure,
+                      importance: day.avg_importance,
+                    }))}
+                    showEvery={5}
+                  />
+                </View>
+
+                {Object.keys(monthStats.emotion_distribution).length > 0 && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-3">情绪分布</Text>
+                    {Object.entries(monthStats.emotion_distribution)
+                      .sort(([, a], [, b]) => b - a)
+                      .slice(0, 5)
+                      .map(([emotion, count]) => (
+                        <View key={emotion} className="flex-row items-center mb-1.5">
+                          <Text className="text-sm text-gray-600 w-14">{emotion}</Text>
+                          <View className="flex-1 mx-2">
+                            <Bar value={count} max={monthStats.total_count} color="#fdba74" />
+                          </View>
+                          <Text className="text-xs text-gray-400 w-5">{count}</Text>
+                        </View>
+                      ))}
+                  </View>
+                )}
+
+                {monthStats.total_count === 0 && (
+                  <View className="items-center py-10">
+                    <Text className="text-3xl mb-2">📊</Text>
+                    <Text className="text-gray-500 text-sm">本月还没有记录</Text>
                   </View>
                 )}
               </View>

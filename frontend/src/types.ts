@@ -122,16 +122,27 @@ export interface DayStats {
   avg_importance?: number;
 }
 
+export interface DailyDataPoint {
+  date: string;
+  avg_intensity: number;
+  avg_pleasure?: number;
+  avg_importance?: number;
+  count: number;
+  dominant_emotion: string;
+  daily_mood_score?: number;
+}
+
 export interface WeekStats {
-  daily_data: {
-    date: string;
-    avg_intensity: number;
-    avg_pleasure?: number;
-    avg_importance?: number;
-    count: number;
-    dominant_emotion: string;
-    daily_mood_score?: number;
-  }[];
+  daily_data: DailyDataPoint[];
+  total_count: number;
+  emotion_distribution: Record<string, number>;
+  avg_intensity: number;
+  avg_pleasure?: number;
+  avg_importance?: number;
+}
+
+export interface MonthStats {
+  daily_data: DailyDataPoint[];
   total_count: number;
   emotion_distribution: Record<string, number>;
   avg_intensity: number;
