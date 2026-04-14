@@ -539,16 +539,16 @@ export default function HistoryScreen() {
     setLoading(true);
     setRadarData(null);
     try {
+      // Stats and radar fetched independently — radar failure won't break the charts
       const period = statsTab === 'today' ? 'day' : statsTab === 'week' ? 'week' : 'month';
-      const [radar] = await Promise.all([
-        api.getDomainRadar(period, userId),
-        statsTab === 'today'
-          ? api.getStatsToday(userId).then(setDayStats)
-          : statsTab === 'week'
-          ? api.getStatsWeek(userId).then(setWeekStats)
-          : api.getStatsMonth(userId).then(setMonthStats),
-      ]);
-      setRadarData(radar);
+      if (statsTab === 'today') {
+        setDayStats(await api.getStatsToday(userId));
+      } else if (statsTab === 'week') {
+        setWeekStats(await api.getStatsWeek(userId));
+      } else {
+        setMonthStats(await api.getStatsMonth(userId));
+      }
+      api.getDomainRadar(period, userId).then(setRadarData).catch(() => {});
     } finally { setLoading(false); }
   }, [statsTab, userId]);
 

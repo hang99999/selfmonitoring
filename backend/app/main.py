@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.database import engine, SessionLocal
 from app.models import Base, User, SystemPrompt, AccessCode
@@ -16,31 +17,29 @@ from app.prompts import (
 )
 
 
-def _migrate(conn):
+def _migrate():
     """Add missing columns to existing tables (safe to run multiple times)."""
-    cursor = conn.cursor()
-    # mood_records 新增字段
+    # Use IF NOT EXISTS so each statement is idempotent (PostgreSQL 9.6+)
     migrations = [
-        "ALTER TABLE mood_records ADD COLUMN pleasure_score REAL",
-        "ALTER TABLE mood_records ADD COLUMN importance_score REAL",
-        "ALTER TABLE mood_records ADD COLUMN planned_activity_id TEXT",
-        "ALTER TABLE mood_records ADD COLUMN life_domain_id TEXT",
-        # chatbot tables (SQLAlchemy create_all handles new tables; these are column-level fallbacks)
+        "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS pleasure_score REAL",
+        "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS importance_score REAL",
+        "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS planned_activity_id TEXT",
+        "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS life_domain_id TEXT",
     ]
-    for sql in migrations:
-        try:
-            cursor.execute(sql)
-        except Exception:
-            pass  # 列已存在，忽略
-    conn.commit()
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception:
+                pass  # SQLite doesn't support IF NOT EXISTS — ignore
+        conn.commit()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: create all tables (new ones only) and run migrations
     Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
-        _migrate(conn.connection)
+    _migrate()
     db = SessionLocal()
     try:
         # Ensure default user exists
