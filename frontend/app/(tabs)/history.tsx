@@ -318,8 +318,10 @@ function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: nu
           <Polyline points={importancePath} fill="none" stroke="#818cf8" strokeWidth={2} strokeLinejoin="round" />
         )}
         {data.map((p, i) => (
-          <>{p.pleasure != null && <Circle key={`p${i}`} cx={xOf(i)} cy={yOf(p.pleasure)} r={3} fill="#fb923c" />}
-            {p.importance != null && <Circle key={`m${i}`} cx={xOf(i)} cy={yOf(p.importance)} r={3} fill="#818cf8" />}</>
+          <G key={i}>
+            {p.pleasure != null && <Circle cx={xOf(i)} cy={yOf(p.pleasure)} r={3} fill="#fb923c" />}
+            {p.importance != null && <Circle cx={xOf(i)} cy={yOf(p.importance)} r={3} fill="#818cf8" />}
+          </G>
         ))}
       </Svg>
       <View className="flex-row gap-4 justify-center mt-1 mb-1">
@@ -682,13 +684,6 @@ export default function HistoryScreen() {
                   </View>
                 )}
 
-                {dayStats.records.length === 0 && (
-                  <View className="items-center py-10">
-                    <Text className="text-3xl mb-2">📝</Text>
-                    <Text className="text-gray-500 text-sm">今天还没有记录</Text>
-                    <Text className="text-gray-400 text-xs mt-1">回到主页开始记录吧</Text>
-                  </View>
-                )}
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
@@ -803,12 +798,6 @@ export default function HistoryScreen() {
                   </View>
                 )}
 
-                {monthStats.total_count === 0 && (
-                  <View className="items-center py-10">
-                    <Text className="text-3xl mb-2">📊</Text>
-                    <Text className="text-gray-500 text-sm">本月还没有记录</Text>
-                  </View>
-                )}
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
