@@ -637,19 +637,20 @@ export default function HistoryScreen() {
                   ))}
                 </View>
 
-                {dayStats.records.length >= 1 && (
-                  <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-3">今日趋势</Text>
-                    <LineChart
-                      data={dayStats.records.map(r => ({
-                        label: new Date(r.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-                        pleasure: r.pleasure_score,
-                        importance: r.importance_score,
-                      }))}
-                      showEvery={1}
-                    />
-                  </View>
-                )}
+                <View className="bg-white rounded-2xl p-4 mb-4">
+                  <Text className="text-sm font-semibold text-gray-700 mb-3">今日趋势</Text>
+                  <LineChart
+                    data={dayStats.records.length > 0
+                      ? dayStats.records.map(r => ({
+                          label: new Date(r.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+                          pleasure: r.pleasure_score,
+                          importance: r.importance_score,
+                        }))
+                      : ['08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00'].map(t => ({ label: t, pleasure: null, importance: null }))
+                    }
+                    showEvery={1}
+                  />
+                </View>
 
                 {dayStats.records.length > 0 && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
