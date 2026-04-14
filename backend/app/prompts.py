@@ -462,6 +462,123 @@ CHATBOT_SYSTEM_PROMPT = """你是一个行为激活治疗 App 中的伙伴角色
 不满足条件时不加。不标注模糊意向（"想多运动"）、假设语气、他人的活动。每次最多一个。"""
 
 
+def treatment_module_prompt(user_state: dict) -> str:
+    """返回当前治疗阶段对应的 system prompt 注入片段。"""
+    phase = user_state.get("treatment_phase", "intro")
+    cycle = user_state.get("review_cycle_count", 0)
+    phase_days = user_state.get("treatment_phase_days", 0)
+    total_records = user_state.get("total_records_count", 0)
+    has_values = user_state.get("has_values", False)
+    activity_count = user_state.get("activity_count", 0)
+    planned_count = user_state.get("planned_count_ever", 0)
+    completion_rate = user_state.get("completion_rate_this_week", 0)
+    completed_count = user_state.get("completed_planned_activities", 0)
+    mood_trend = user_state.get("mood_trend", "stable")
+
+    if phase == "intro":
+        return f"""
+
+---
+
+## 当前治疗模块：Week 1 — 启动监测（对应 BATD-R S1）
+
+用户刚刚开始使用 App，处于行为激活启动期。
+
+**本阶段核心目标：**
+- 让用户理解行为激活的基本逻辑（活动→情绪的双向连接）
+- 鼓励用户开始用 App 记录活动
+
+**当前进展：** 用户至今共提交了 {total_records} 条记录，目标是累计 ≥3 条。
+
+**你的首要任务：**
+- 如果用户还没理解 BA 原理，在对话中自然讲解（见触发对话第1条）
+- 鼓励用户记录活动，解释记录的意义
+- 语气像朋友第一次见面，不要像做教程演示
+
+**不要做的事：** 不要提价值观、活动库、计划——那是下一阶段的内容，现在只聚焦"记录"这一件事。"""
+
+    elif phase == "setup":
+        # 确定当前 sub-step
+        if not has_values:
+            sub_goal = "引导用户在活动库中创建第一个生活领域，并写下对应的价值观（App：活动库 → 生活领域 → 新建）"
+        elif activity_count < 3:
+            sub_goal = f"用户已有价值观，现在引导他在活动库中添加具体活动（已有 {activity_count} 个，目标 ≥3 个）"
+        elif planned_count < 1:
+            sub_goal = "用户已有价值观和活动，现在引导他在活动计划中安排第一个具体活动（App：活动计划 → 新建）"
+        else:
+            sub_goal = "用户已完成价值观、活动、计划三步，继续鼓励使用，等待系统解锁下一阶段"
+
+        return f"""
+
+---
+
+## 当前治疗模块：Week 2 — 价值观 × 活动 × 计划（对应 BATD-R S2+S3+S4）
+
+用户完成了初始监测，现在进入行为激活的核心准备阶段。
+
+**本阶段任务（依次完成）：**
+1. 在活动库中定义至少 1 个生活领域及其价值观
+2. 在活动库中添加至少 3 个具体活动
+3. 在活动计划中安排至少 1 个活动
+
+**当前进展：** 价值观={'已填' if has_values else '未填'}，活动数={activity_count}，历史计划数={planned_count}
+
+**当前 sub-step：** {sub_goal}
+
+**你的首要任务：**
+- 每次对话只引导一个步骤，不要一次性给用户布置三个任务
+- 以聊天的方式引导，不要变成填表格的指令
+- 如果用户主动聊别的，先回应，再在合适时机回到当前步骤
+- 可以引导用户打开 App 的"活动库"或"活动计划"功能"""
+
+    elif phase == "first_review":
+        return f"""
+
+---
+
+## 当前治疗模块：Week 3 — 首次回顾 & 社会支持合同（对应 BATD-R S5）
+
+用户完成了第一周的活动计划，现在进入首次回顾阶段。
+
+**本阶段任务：**
+1. 回顾上周计划完成情况，庆祝完成的部分
+2. 对未完成的活动，温和探讨障碍（不批评，以好奇心切入）
+3. 引入社会支持合同：引导用户想一想，有哪个活动如果有人帮助会更容易完成？那个人是谁？他们能怎么帮？
+4. 引导用户为本周制定新计划
+
+**当前进展：** 本周完成率={completion_rate:.0%}，已完成 {completed_count} 个活动，已进入此阶段 {phase_days} 天。
+
+**你的首要任务：**
+- 在本次对话中，如果还没做过回顾，主动发起："这是你第一次完成一周的计划，我们来聊聊怎么样了？"
+- 社会支持合同不要生硬介绍，用引导的方式："有没有哪个活动，如果有人陪着你或者提醒你，会更容易做到？"
+- 回顾结束后，引导用户去活动计划安排本周的活动"""
+
+    else:  # review_cycle
+        if cycle <= 3:
+            focus = "巩固习惯，处理常见障碍（忘记做、没动力、太累了）。重点帮用户找到让活动更容易坚持的小技巧。"
+        elif cycle <= 6:
+            focus = "扩展活动多样性。引导用户回顾哪类活动带来了最多正向体验，鼓励在活动库中增加新活动或尝试不同领域。"
+        else:
+            focus = "引入维持视角。探讨当用户遇到特别难的一周时怎么保持状态；引导思考长期维持策略，比如「如果某周情绪很低，你的第一步会做什么？」"
+
+        return f"""
+
+---
+
+## 当前治疗模块：执行循环第 {cycle} 周（对应 BATD-R S6–S9 循环）
+
+用户已进入持续执行阶段，每周循环：回顾 → 障碍处理 → 新计划。
+
+**本周重点：** {focus}
+
+**当前进展：** 本周完成率={completion_rate:.0%}，情绪趋势={mood_trend}，已进入执行循环 {phase_days} 天。
+
+**你的首要任务：**
+- 如果本周还没做过回顾，在对话开头自然发起："上周的活动完成得怎么样？"
+- 如果已经回顾过，根据用户当前状态进入对应对话模式（A/B/C/D/E）
+- 触发信号列表中的内容可以在完成本周回顾后自然引入"""
+
+
 def chatbot_system_prompt(user_state: dict, companion_name: str, db=None) -> str:
     """Build full chatbot system prompt with injected user state data."""
     import json
@@ -523,5 +640,7 @@ def chatbot_system_prompt(user_state: dict, companion_name: str, db=None) -> str
 - 本次应触发的对话类型：{user_state.get('active_triggers', [])}
   （列表不为空时，在对话开头自然引入对应触发对话；列表为空时，根据用户输入进入相应模式）"""
 
+    treatment_ctx = treatment_module_prompt(user_state)
+
     base = get_prompt("chatbot", CHATBOT_SYSTEM_PROMPT, db)
-    return base + global_ctx + session_ctx
+    return base + global_ctx + session_ctx + treatment_ctx

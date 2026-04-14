@@ -176,6 +176,17 @@ class ChatMessageRecord(Base):
     created_at = Column(DateTime, default=localnow)
 
 
+class TreatmentProgress(Base):
+    """跟踪用户在 BATD-R 治疗模块中的进度"""
+    __tablename__ = "treatment_progress"
+
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    phase = Column(String, nullable=False, default="intro")  # intro|setup|first_review|review_cycle
+    review_cycle_count = Column(Integer, default=0)          # 第几个执行循环（review_cycle 阶段用）
+    phase_unlocked_at = Column(DateTime, default=localnow)   # 当前阶段解锁时间
+    updated_at = Column(DateTime, default=localnow)
+
+
 class SystemPrompt(Base):
     """LLM prompt 模板 — 可在 pgAdmin 中直接编辑 content 字段来调整模型行为"""
     __tablename__ = "system_prompts"

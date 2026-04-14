@@ -17,6 +17,7 @@ from app.models import (
     Activity, Value, LifeDomain,
     TriggerLog, CompanionSettings,
     ChatSession, ChatMessageRecord,
+    TreatmentProgress,
 )
 from app.prompts import chatbot_system_prompt
 
@@ -65,6 +66,64 @@ TRIGGER_COOLDOWNS = {
     "difficulty_adjustment_down": 7,
     "maintenance_planning": 30,
 }
+
+
+# ── Treatment progress helpers ────────────────────────────────────────────────
+
+def _get_or_create_progress(db: Session, user_id: str) -> TreatmentProgress:
+    progress = db.query(TreatmentProgress).filter(TreatmentProgress.user_id == user_id).first()
+    if not progress:
+        progress = TreatmentProgress(user_id=user_id, phase="intro")
+        db.add(progress)
+        db.commit()
+        db.refresh(progress)
+    return progress
+
+
+def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progress: TreatmentProgress):
+    """Check unlock criteria and auto-advance to the next phase if met. Mutates progress in DB."""
+    now = datetime.now()
+    phase = progress.phase
+    phase_age_days = (now - progress.phase_unlocked_at).days
+
+    if phase == "intro":
+        total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
+        if total_records >= 3:
+            progress.phase = "setup"
+            progress.phase_unlocked_at = now
+            progress.updated_at = now
+            db.commit()
+
+    elif phase == "setup":
+        has_values = user_state.get("has_values", False)
+        activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
+        planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
+        if phase_age_days >= 3 and has_values and activity_count >= 3 and planned_ever >= 1:
+            progress.phase = "first_review"
+            progress.phase_unlocked_at = now
+            progress.updated_at = now
+            db.commit()
+
+    elif phase == "first_review":
+        any_completed = db.query(PlannedActivity).filter(
+            PlannedActivity.user_id == user_id,
+            PlannedActivity.completed == True,
+        ).count()
+        if phase_age_days >= 3 and any_completed >= 1:
+            progress.phase = "review_cycle"
+            progress.review_cycle_count = 1
+            progress.phase_unlocked_at = now
+            progress.updated_at = now
+            db.commit()
+
+    elif phase == "review_cycle":
+        # Advance cycle count once per 7 days
+        days_in_phase = (now - progress.phase_unlocked_at).days
+        expected_count = max(1, days_in_phase // 7 + 1)
+        if expected_count > progress.review_cycle_count:
+            progress.review_cycle_count = expected_count
+            progress.updated_at = now
+            db.commit()
 
 
 # ── User state computation ────────────────────────────────────────────────────
@@ -303,10 +362,17 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     active_triggers.sort(key=lambda t: TRIGGER_PRIORITY.index(t) if t in TRIGGER_PRIORITY else 99)
     top_trigger = active_triggers[:1]
 
+    total_records_count = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
+    activity_count_total = db.query(Activity).filter(Activity.user_id == user_id).count()
+    planned_count_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
+
     return {
         "companion_name": companion_name,
         "user_summary": user_summary,
         "days_since_registration": days_since_registration,
+        "total_records_count": total_records_count,
+        "activity_count": activity_count_total,
+        "planned_count_ever": planned_count_ever,
         "is_first_conversation": is_first_conversation,
         "total_records_this_week": total_records_this_week,
         "consecutive_days_no_record": consecutive_days_no_record,
@@ -566,9 +632,23 @@ async def chat(
     if req.message.strip():
         llm_messages = llm_messages + [{"role": "user", "content": req.message.strip()}]
 
-    # Compute user state and build system prompt
+    # Compute user state
     state = _compute_user_state(db, req.user_id)
     companion_name = state["companion_name"]
+
+    # Treatment module: get progress, check advancement, inject into state
+    progress = _get_or_create_progress(db, req.user_id)
+    _check_and_advance_phase(db, req.user_id, state, progress)
+    state["treatment_phase"] = progress.phase
+    state["review_cycle_count"] = progress.review_cycle_count
+    state["treatment_phase_days"] = (datetime.now() - progress.phase_unlocked_at).days
+
+    # Suppress trigger system during linear phases — module takes priority
+    # (keep monitoring_troubleshoot always active; suppress the rest)
+    if progress.phase in ("intro", "setup", "first_review"):
+        always_on = {"first_conversation", "monitoring_troubleshoot"}
+        state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
+
     system = chatbot_system_prompt(state, companion_name, db=db)
 
     # Call LLM
@@ -603,6 +683,21 @@ async def chat(
         "reply": reply,
         "is_crisis": False,
         "detected_activity": detected,
+    }
+
+
+@router.get("/treatment/progress")
+async def get_treatment_progress(
+    user_id: str = Query(default="default_user"),
+    db: Session = Depends(get_db),
+):
+    """Return the user's current treatment phase and cycle count."""
+    progress = _get_or_create_progress(db, user_id)
+    return {
+        "phase": progress.phase,
+        "review_cycle_count": progress.review_cycle_count,
+        "phase_unlocked_at": progress.phase_unlocked_at.isoformat(),
+        "phase_days": (datetime.now() - progress.phase_unlocked_at).days,
     }
 
 
