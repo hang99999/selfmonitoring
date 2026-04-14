@@ -637,7 +637,7 @@ export default function HistoryScreen() {
                   ))}
                 </View>
 
-                {dayStats.records.length > 1 && (
+                {dayStats.records.length >= 1 && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
                     <Text className="text-sm font-semibold text-gray-700 mb-3">今日趋势</Text>
                     <LineChart
