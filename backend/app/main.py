@@ -24,6 +24,7 @@ def _migrate(conn):
         "ALTER TABLE mood_records ADD COLUMN pleasure_score REAL",
         "ALTER TABLE mood_records ADD COLUMN importance_score REAL",
         "ALTER TABLE mood_records ADD COLUMN planned_activity_id TEXT",
+        "ALTER TABLE mood_records ADD COLUMN life_domain_id TEXT",
         # chatbot tables (SQLAlchemy create_all handles new tables; these are column-level fallbacks)
     ]
     for sql in migrations:

@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MoodRecord
+from app.models import MoodRecord, PlannedActivity, LifeDomain
 from app.schemas import (
     TodayStatsRecord,
     TodayStatsResponse,
     DailyData,
     WeekStatsResponse,
     MonthStatsResponse,
+    DomainRadarItem,
 )
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
@@ -196,3 +197,74 @@ async def month_stats(
         avg_pleasure=_compute_avg_pleasure(records),
         avg_importance=_compute_avg_importance(records),
     )
+
+
+@router.get("/domain-radar", response_model=list[DomainRadarItem])
+async def domain_radar(
+    user_id: str = Query(default="default_user"),
+    period: str = Query(default="week"),  # "day" | "week" | "month"
+    db: Session = Depends(get_db),
+):
+    """Return activity counts per life domain for the given period.
+
+    Counts two sources to avoid double-counting:
+    - confirmed MoodRecords (with life_domain_id)
+    - PlannedActivities completed WITHOUT a linked MoodRecord (direct tick-off)
+    """
+    now = datetime.now()
+    if period == "day":
+        start_dt = datetime(now.year, now.month, now.day)
+        end_dt = start_dt + timedelta(days=1)
+        start_date_str = start_dt.strftime("%Y-%m-%d")
+        end_date_str = start_dt.strftime("%Y-%m-%d")
+    elif period == "month":
+        start_dt = (now - timedelta(days=29)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now + timedelta(days=1)
+        start_date_str = start_dt.strftime("%Y-%m-%d")
+        end_date_str = now.strftime("%Y-%m-%d")
+    else:  # week (default)
+        start_dt = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_dt = now + timedelta(days=1)
+        start_date_str = start_dt.strftime("%Y-%m-%d")
+        end_date_str = now.strftime("%Y-%m-%d")
+
+    counts: dict[Optional[str], int] = {}
+
+    # Source 1: confirmed MoodRecords
+    mood_records = (
+        db.query(MoodRecord)
+        .filter(
+            MoodRecord.user_id == user_id,
+            MoodRecord.confirmed == True,
+            MoodRecord.timestamp >= start_dt,
+            MoodRecord.timestamp < end_dt,
+        )
+        .all()
+    )
+    for r in mood_records:
+        key = r.life_domain_id  # None means "其他"
+        counts[key] = counts.get(key, 0) + 1
+
+    # Source 2: PlannedActivities completed directly (no linked MoodRecord)
+    planned = (
+        db.query(PlannedActivity)
+        .filter(
+            PlannedActivity.user_id == user_id,
+            PlannedActivity.completed == True,
+            PlannedActivity.completion_record_id == None,
+            PlannedActivity.scheduled_date >= start_date_str,
+            PlannedActivity.scheduled_date <= end_date_str,
+        )
+        .all()
+    )
+    for p in planned:
+        key = p.life_domain_id
+        counts[key] = counts.get(key, 0) + 1
+
+    # Build result: 5 named domains + "其他"
+    domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).order_by(LifeDomain.created_at).all()
+    result: list[DomainRadarItem] = []
+    for d in domains:
+        result.append(DomainRadarItem(domain_id=d.id, domain_name=d.name, count=counts.get(d.id, 0)))
+    result.append(DomainRadarItem(domain_id=None, domain_name="其他", count=counts.get(None, 0)))
+    return result

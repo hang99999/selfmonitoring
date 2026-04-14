@@ -13,6 +13,7 @@ class RecordSubmitRequest(BaseModel):
     activity: Optional[str] = None
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
+    life_domain_id: Optional[str] = None  # for quick-save path; None = "其他"
 
 
 class RecordConfirmRequest(BaseModel):
@@ -22,6 +23,7 @@ class RecordConfirmRequest(BaseModel):
     emotion_intensity: Optional[int] = None
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
+    life_domain_id: Optional[str] = None  # None = "其他"; only applied if field is in request body
 
 
 # --- Activity Library Schemas ---
@@ -155,6 +157,7 @@ class MoodRecordResponse(BaseModel):
     voice_valence: Optional[float] = None
     voice_arousal: Optional[float] = None
     combined_emotion_score: Optional[float] = None
+    life_domain_id: Optional[str] = None
     ai_immediate_feedback: Optional[str] = None
     risk_level: str = "safe"
     cognitive_distortion: Optional[str] = None
@@ -220,6 +223,14 @@ class MonthStatsResponse(BaseModel):
     avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
+
+
+# --- Domain Radar Schemas ---
+
+class DomainRadarItem(BaseModel):
+    domain_id: Optional[str] = None  # None = "其他"
+    domain_name: str
+    count: int
 
 
 # --- Auth Schemas ---

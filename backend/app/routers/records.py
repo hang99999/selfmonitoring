@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
-from app.models import MoodRecord, User, PlannedActivity
+from app.models import MoodRecord, User, PlannedActivity, LifeDomain
 from app.schemas import MoodRecordResponse, RecordSubmitRequest, RecordConfirmRequest
 from app.llm_client import call_llm
 from app.prompts import safety_check_prompt, structured_extraction_prompt, empathic_feedback_prompt
@@ -125,6 +125,16 @@ async def submit_record(
         db.add(user)
         db.commit()
 
+    def _resolve_domain_id(domain_name: str, uid: str) -> Optional[str]:
+        """Resolve a domain name like '身心灵' to its UUID; returns None for '其他' or unknown."""
+        if not domain_name or domain_name == "其他":
+            return None
+        domain = db.query(LifeDomain).filter(
+            LifeDomain.user_id == uid,
+            LifeDomain.name == domain_name,
+        ).first()
+        return domain.id if domain else None
+
     if req.activity is not None:
         # ── Quick-save path ──────────────────────────────────────────────────
         # User already supplied activity + scores; save immediately,
@@ -139,6 +149,17 @@ async def submit_record(
         pleasure_score = _clamp(req.pleasure_score, 5.0)
         importance_score = _clamp(req.importance_score, 5.0)
 
+        # Determine life_domain_id: planned activity domain takes priority
+        life_domain_id = req.life_domain_id
+        planned_for_quick: Optional[PlannedActivity] = None
+        if req.planned_activity_id:
+            planned_for_quick = db.query(PlannedActivity).filter(
+                PlannedActivity.id == req.planned_activity_id,
+                PlannedActivity.user_id == user_id,
+            ).first()
+            if planned_for_quick and planned_for_quick.life_domain_id:
+                life_domain_id = planned_for_quick.life_domain_id
+
         record = MoodRecord(
             id=str(uuid.uuid4()),
             user_id=user_id,
@@ -150,13 +171,17 @@ async def submit_record(
             pleasure_score=pleasure_score,
             importance_score=importance_score,
             planned_activity_id=req.planned_activity_id,
+            life_domain_id=life_domain_id,
             ai_immediate_feedback=None,  # filled by background task
             risk_level="safe",           # updated by background task
             confirmed=True,
         )
         db.add(record)
 
-        if req.planned_activity_id:
+        if planned_for_quick:
+            planned_for_quick.completed = True
+            planned_for_quick.completion_record_id = record.id
+        elif req.planned_activity_id:
             planned = db.query(PlannedActivity).filter(
                 PlannedActivity.id == req.planned_activity_id,
                 PlannedActivity.user_id == user_id,
@@ -196,6 +221,7 @@ async def submit_record(
     emotion_type = extraction_data.get("emotion_type", "")
     pleasure_score = extraction_data.get("pleasure_score", 5)
     importance_score = extraction_data.get("importance_score", 5)
+    suggested_domain_name = extraction_data.get("life_domain", "其他")
 
     def _to_float(val, default: float) -> float:
         try:
@@ -208,7 +234,20 @@ async def submit_record(
     pleasure_score = max(0.0, min(10.0, pleasure_score))
     importance_score = max(0.0, min(10.0, importance_score))
 
-    # Step 3: Save to DB immediately (feedback will be filled by background task)
+    # Step 3: Resolve life_domain_id (planned activity takes priority over LLM suggestion)
+    life_domain_id: Optional[str] = None
+    planned_std: Optional[PlannedActivity] = None
+    if req.planned_activity_id:
+        planned_std = db.query(PlannedActivity).filter(
+            PlannedActivity.id == req.planned_activity_id,
+            PlannedActivity.user_id == user_id,
+        ).first()
+        if planned_std and planned_std.life_domain_id:
+            life_domain_id = planned_std.life_domain_id
+    if life_domain_id is None:
+        life_domain_id = _resolve_domain_id(suggested_domain_name, user_id)
+
+    # Step 4: Save to DB immediately (feedback will be filled by background task)
     record = MoodRecord(
         id=str(uuid.uuid4()),
         user_id=user_id,
@@ -220,13 +259,17 @@ async def submit_record(
         pleasure_score=pleasure_score,
         importance_score=importance_score,
         planned_activity_id=req.planned_activity_id,
+        life_domain_id=life_domain_id,
         ai_immediate_feedback=None,  # filled async
         risk_level=risk_level,
         confirmed=False,
     )
     db.add(record)
 
-    if req.planned_activity_id:
+    if planned_std:
+        planned_std.completed = True
+        planned_std.completion_record_id = record.id
+    elif req.planned_activity_id:
         planned = db.query(PlannedActivity).filter(
             PlannedActivity.id == req.planned_activity_id,
             PlannedActivity.user_id == user_id,
@@ -279,6 +322,9 @@ async def confirm_record(
             record.pleasure_score = max(0.0, min(10.0, body.pleasure_score))
         if body.importance_score is not None:
             record.importance_score = max(0.0, min(10.0, body.importance_score))
+        # life_domain_id: update only when explicitly sent (None = "其他" is a valid value)
+        if "life_domain_id" in body.model_fields_set:
+            record.life_domain_id = body.life_domain_id
 
     record.confirmed = True
     db.commit()

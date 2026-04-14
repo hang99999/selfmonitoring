@@ -104,6 +104,7 @@ class MoodRecord(Base):
     voice_valence = Column(Float, nullable=True)
     voice_arousal = Column(Float, nullable=True)
     combined_emotion_score = Column(Float, nullable=True)
+    life_domain_id = Column(String, ForeignKey("life_domains.id"), nullable=True)
     ai_immediate_feedback = Column(Text, nullable=True)
     risk_level = Column(String, default="safe")
     cognitive_distortion = Column(String, nullable=True)

@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { api } from '../src/api';
-import type { MoodRecord } from '../src/types';
+import type { MoodRecord, LifeDomain } from '../src/types';
+
+// Fixed domain list (names match DEFAULT_LIFE_DOMAINS on backend)
+const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '身心灵', '日常责任', '其他'] as const;
 
 interface Props {
   visible: boolean;
@@ -59,6 +62,9 @@ export default function RecordModal({
   const [importance, setImportance] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Domain selection: undefined = not loaded, null = "其他", string = domain ID
+  const [domains, setDomains] = useState<LifeDomain[]>([]);
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null | undefined>(undefined);
 
   const reset = () => {
     setStep('input');
@@ -69,6 +75,8 @@ export default function RecordModal({
     setPleasure(null);
     setImportance(null);
     setError('');
+    setSelectedDomainId(undefined);
+    setDomains([]);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -85,6 +93,10 @@ export default function RecordModal({
       setThought(rec.thought || '');
       setPleasure(rec.pleasure_score ?? 5);
       setImportance(rec.importance_score ?? 5);
+      // Pre-fill domain from LLM suggestion (undefined life_domain_id → "其他" = null)
+      setSelectedDomainId(rec.life_domain_id ?? null);
+      // Fetch domain list for the selector
+      api.getDomains(userId).then(setDomains).catch(() => {});
       if (rec.risk_level === 'crisis') {
         setStep('crisis');
       } else {
@@ -107,6 +119,7 @@ export default function RecordModal({
         thought,
         pleasure_score: pleasure,
         importance_score: importance,
+        life_domain_id: selectedDomainId ?? null,
       });
       setStep('done');
       onRecordSubmitted?.(updated.id);
@@ -217,6 +230,33 @@ export default function RecordModal({
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-700 bg-white"
                   placeholderTextColor="#9ca3af"
                 />
+              </View>
+
+              {/* Domain selector */}
+              <View className="mb-5">
+                <Text className="text-sm font-medium text-gray-500 mb-2">生活领域</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {DOMAIN_NAMES.map(name => {
+                    const domain = domains.find(d => d.name === name);
+                    const domainId = name === '其他' ? null : (domain?.id ?? null);
+                    const isSelected = selectedDomainId === domainId;
+                    return (
+                      <TouchableOpacity
+                        key={name}
+                        onPress={() => setSelectedDomainId(domainId)}
+                        className="px-3 py-1.5 rounded-full border"
+                        style={{
+                          backgroundColor: isSelected ? '#f97316' : '#f9fafb',
+                          borderColor: isSelected ? '#f97316' : '#e5e7eb',
+                        }}
+                      >
+                        <Text style={{ color: isSelected ? '#fff' : '#6b7280' }} className="text-xs font-medium">
+                          {name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </View>
 
               <View className="bg-gray-50 rounded-2xl p-4 mb-5">

@@ -8,11 +8,18 @@ export interface MoodRecord {
   pleasure_score?: number;
   importance_score?: number;
   planned_activity_id?: string;
+  life_domain_id?: string | null;  // null = "其他"
   emotion_type: string;
   emotion_intensity: number;
   ai_immediate_feedback: string;
   risk_level: 'safe' | 'mild' | 'high' | 'crisis';
   confirmed: boolean;
+}
+
+export interface DomainRadarItem {
+  domain_id: string | null;  // null = "其他"
+  domain_name: string;
+  count: number;
 }
 
 export interface InsightReport {

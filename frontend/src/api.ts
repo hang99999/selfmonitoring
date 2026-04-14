@@ -1,7 +1,7 @@
 import type {
   MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
-  ChatMessage, ChatResponse, UserState,
+  ChatMessage, ChatResponse, UserState, DomainRadarItem,
 } from './types';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
@@ -42,6 +42,7 @@ export const api = {
     emotion_intensity?: number;
     pleasure_score?: number;
     importance_score?: number;
+    life_domain_id?: string | null;
   }) =>
     request<MoodRecord>(`/api/record/${id}/confirm`, {
       method: 'PUT',
@@ -76,6 +77,9 @@ export const api = {
 
   getStatsMonth: (userId = 'default_user') =>
     request<MonthStats>(`/api/stats/month?user_id=${userId}`),
+
+  getDomainRadar: (period: 'day' | 'week' | 'month', userId = 'default_user') =>
+    request<DomainRadarItem[]>(`/api/stats/domain-radar?user_id=${userId}&period=${period}`),
 
   // --- Life Domains ---
   getDomains: (userId = 'default_user') =>

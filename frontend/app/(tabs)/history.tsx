@@ -4,10 +4,10 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G } from 'react-native-svg';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { DayStats, WeekStats, MonthStats, InsightReport } from '../../src/types';
+import type { DayStats, WeekStats, MonthStats, InsightReport, DomainRadarItem } from '../../src/types';
 
 // ── Assessment scales ─────────────────────────────────────────────────────────
 
@@ -336,6 +336,113 @@ function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: nu
   );
 }
 
+// ── Radar Chart ──────────────────────────────────────────────────────────────
+
+// Short display labels for axes (to fit tight spaces)
+const DOMAIN_SHORT: Record<string, string> = {
+  '亲密关系': '亲密\n关系',
+  '教育与职业': '教育\n职业',
+  '休闲兴趣': '休闲\n兴趣',
+  '身心灵': '身心灵',
+  '日常责任': '日常\n责任',
+  '其他': '其他',
+};
+
+function RadarChart({ data }: { data: DomainRadarItem[] }) {
+  const { width } = useWindowDimensions();
+  const size = Math.min(width - 64, 260);
+  const cx = size / 2;
+  const cy = size / 2;
+  const R = size / 2 - 38;           // axis radius
+  const N = data.length;
+  if (N === 0) return null;
+
+  const maxCount = Math.max(...data.map(d => d.count), 1);
+  const rings = [0.25, 0.5, 0.75, 1.0];
+  const RING_COLOR = '#f3f4f6';
+  const AXIS_COLOR = '#e5e7eb';
+  const DATA_FILL = 'rgba(249,115,22,0.15)';
+  const DATA_STROKE = '#f97316';
+
+  const angle = (i: number) => (i * 2 * Math.PI) / N - Math.PI / 2;
+  const px = (i: number, r: number) => cx + r * Math.cos(angle(i));
+  const py = (i: number, r: number) => cy + r * Math.sin(angle(i));
+
+  const ringPoints = (ratio: number) =>
+    Array.from({ length: N }, (_, i) => `${px(i, R * ratio).toFixed(1)},${py(i, R * ratio).toFixed(1)}`).join(' ');
+
+  const dataPoints = data
+    .map((d, i) => {
+      const r = (d.count / maxCount) * R;
+      return `${px(i, r).toFixed(1)},${py(i, r).toFixed(1)}`;
+    })
+    .join(' ');
+
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <Svg width={size} height={size}>
+        {/* Grid rings */}
+        {rings.map(ratio => (
+          <Polygon key={ratio} points={ringPoints(ratio)} fill="none" stroke={RING_COLOR} strokeWidth={1} />
+        ))}
+        {/* Axis lines */}
+        {data.map((_, i) => (
+          <Line key={i} x1={cx} y1={cy} x2={px(i, R)} y2={py(i, R)} stroke={AXIS_COLOR} strokeWidth={1} />
+        ))}
+        {/* Data polygon */}
+        {maxCount > 0 && (
+          <Polygon points={dataPoints} fill={DATA_FILL} stroke={DATA_STROKE} strokeWidth={2} />
+        )}
+        {/* Data dots + count labels */}
+        {data.map((d, i) => {
+          const r = (d.count / maxCount) * R;
+          const dotX = px(i, r);
+          const dotY = py(i, r);
+          return (
+            <G key={i}>
+              {d.count > 0 && <Circle cx={dotX} cy={dotY} r={3.5} fill={DATA_STROKE} />}
+              {d.count > 0 && (
+                <SvgText
+                  x={px(i, r + 10)}
+                  y={py(i, r + 10) + 4}
+                  fontSize={9}
+                  fill="#f97316"
+                  textAnchor="middle"
+                  fontWeight="bold"
+                >
+                  {d.count}
+                </SvgText>
+              )}
+            </G>
+          );
+        })}
+        {/* Axis labels */}
+        {data.map((d, i) => {
+          const lx = px(i, R + 22);
+          const ly = py(i, R + 22);
+          const cos = Math.cos(angle(i));
+          const anchor = cos > 0.3 ? 'start' : cos < -0.3 ? 'end' : 'middle';
+          const lines = (DOMAIN_SHORT[d.domain_name] ?? d.domain_name).split('\n');
+          const lineH = 11;
+          const offsetY = lines.length > 1 ? -(lineH / 2) : 0;
+          return lines.map((line, li) => (
+            <SvgText
+              key={`${i}-${li}`}
+              x={lx}
+              y={ly + offsetY + li * lineH + 4}
+              fontSize={9}
+              fill="#6b7280"
+              textAnchor={anchor}
+            >
+              {line}
+            </SvgText>
+          ));
+        })}
+      </Svg>
+    </View>
+  );
+}
+
 // ── InsightCard ───────────────────────────────────────────────────────────────
 
 const EMOTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -421,6 +528,7 @@ export default function HistoryScreen() {
   const [weekStats, setWeekStats] = useState<WeekStats | null>(null);
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [radarData, setRadarData] = useState<DomainRadarItem[] | null>(null);
   const [dailyInsight, setDailyInsight] = useState<InsightReport | null>(null);
   const [weeklyInsight, setWeeklyInsight] = useState<InsightReport | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
@@ -429,16 +537,20 @@ export default function HistoryScreen() {
 
   const loadStats = useCallback(async () => {
     setLoading(true);
+    setRadarData(null);
     try {
-      if (statsTab === 'today') {
-        setDayStats(await api.getStatsToday(userId));
-      } else if (statsTab === 'week') {
-        setWeekStats(await api.getStatsWeek(userId));
-      } else {
-        setMonthStats(await api.getStatsMonth(userId));
-      }
+      const period = statsTab === 'today' ? 'day' : statsTab === 'week' ? 'week' : 'month';
+      const [radar] = await Promise.all([
+        api.getDomainRadar(period, userId),
+        statsTab === 'today'
+          ? api.getStatsToday(userId).then(setDayStats)
+          : statsTab === 'week'
+          ? api.getStatsWeek(userId).then(setWeekStats)
+          : api.getStatsMonth(userId).then(setMonthStats),
+      ]);
+      setRadarData(radar);
     } finally { setLoading(false); }
-  }, [statsTab]);
+  }, [statsTab, userId]);
 
   useEffect(() => {
     if (mainTab === 'stats') loadStats();
@@ -577,6 +689,14 @@ export default function HistoryScreen() {
                     <Text className="text-gray-400 text-xs mt-1">回到主页开始记录吧</Text>
                   </View>
                 )}
+
+                {radarData && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
+                    <Text className="text-xs text-gray-400 mb-3">今日活动覆盖的领域</Text>
+                    <RadarChart data={radarData} />
+                  </View>
+                )}
               </View>
             )}
 
@@ -623,6 +743,14 @@ export default function HistoryScreen() {
                           <Text className="text-xs text-gray-400 w-5">{count}</Text>
                         </View>
                       ))}
+                  </View>
+                )}
+
+                {radarData && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
+                    <Text className="text-xs text-gray-400 mb-3">本周活动覆盖的领域 · BATD-R 建议多领域均衡</Text>
+                    <RadarChart data={radarData} />
                   </View>
                 )}
               </View>
@@ -679,6 +807,14 @@ export default function HistoryScreen() {
                   <View className="items-center py-10">
                     <Text className="text-3xl mb-2">📊</Text>
                     <Text className="text-gray-500 text-sm">本月还没有记录</Text>
+                  </View>
+                )}
+
+                {radarData && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
+                    <Text className="text-xs text-gray-400 mb-3">本月活动覆盖的领域 · BATD-R 建议多领域均衡</Text>
+                    <RadarChart data={radarData} />
                   </View>
                 )}
               </View>
