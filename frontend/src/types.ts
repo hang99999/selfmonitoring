@@ -92,6 +92,13 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatSession {
+  id: number;
+  title: string | null;
+  created_at: string;
+  preview: string | null;
+}
+
 export interface ChatResponse {
   reply: string;
   is_crisis: boolean;

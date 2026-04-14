@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine, SessionLocal
-from app.models import Base, User, SystemPrompt, AccessCode
+from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings
 from app.routers import records, insights, stats, activities, chatbot, auth
 from app.prompts import (
     SAFETY_CHECK_SYSTEM,
@@ -25,6 +25,7 @@ def _migrate():
         "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS importance_score REAL",
         "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS planned_activity_id TEXT",
         "ALTER TABLE mood_records ADD COLUMN IF NOT EXISTS life_domain_id TEXT",
+        "ALTER TABLE companion_settings ADD COLUMN IF NOT EXISTS user_summary TEXT",
     ]
     with engine.connect() as conn:
         for sql in migrations:

@@ -1,7 +1,7 @@
 import type {
   MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
-  ChatMessage, ChatResponse, UserState, DomainRadarItem,
+  ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
 } from './types';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
@@ -185,10 +185,29 @@ export const api = {
   getChatbotState: (userId = 'default_user') =>
     request<UserState>(`/api/chatbot/state?user_id=${userId}`),
 
-  sendChatMessage: (messages: ChatMessage[], userId = 'default_user') =>
+  createChatSession: (userId = 'default_user') =>
+    request<{ id: number; title: string | null; created_at: string }>(
+      `/api/chatbot/session?user_id=${userId}`,
+      { method: 'POST' },
+    ),
+
+  getCurrentSession: (userId = 'default_user') =>
+    request<{ id: number; title: string | null; created_at: string } | null>(
+      `/api/chatbot/session/current?user_id=${userId}`,
+    ),
+
+  listSessions: (userId = 'default_user') =>
+    request<ChatSession[]>(`/api/chatbot/sessions?user_id=${userId}`),
+
+  getSessionMessages: (sessionId: number, userId = 'default_user') =>
+    request<{ id: number; role: 'user' | 'assistant'; content: string; created_at: string }[]>(
+      `/api/chatbot/session/${sessionId}/messages?user_id=${userId}`,
+    ),
+
+  sendChatMessage: (sessionId: number, message: string, userId = 'default_user') =>
     request<ChatResponse>('/api/chatbot/chat', {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId, messages }),
+      body: JSON.stringify({ user_id: userId, session_id: sessionId, message }),
     }),
 
   setCompanionName: (name: string, userId = 'default_user') =>

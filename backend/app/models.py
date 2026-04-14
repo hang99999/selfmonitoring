@@ -151,6 +151,29 @@ class CompanionSettings(Base):
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
     companion_name = Column(String, nullable=False, default="小暖")
     updated_at = Column(DateTime, default=localnow)
+    user_summary = Column(Text, nullable=True)   # LLM 跨会话用户画像摘要（预留）
+
+
+class ChatSession(Base):
+    """每次独立对话会话"""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=localnow)
+    title = Column(String(60), nullable=True)   # LLM 异步生成的会话标题
+
+
+class ChatMessageRecord(Base):
+    """持久化的聊天消息"""
+    __tablename__ = "chat_message_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False, index=True)
+    user_id = Column(String, nullable=False)
+    role = Column(String, nullable=False)    # "user" | "assistant"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=localnow)
 
 
 class SystemPrompt(Base):

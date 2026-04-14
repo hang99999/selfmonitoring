@@ -465,62 +465,63 @@ CHATBOT_SYSTEM_PROMPT = """你是一个行为激活治疗 App 中的伙伴角色
 def chatbot_system_prompt(user_state: dict, companion_name: str, db=None) -> str:
     """Build full chatbot system prompt with injected user state data."""
     import json
-    state_text = f"""
+
+    user_summary = user_state.get("user_summary")
+
+    # ── 全局用户画像（跨会话持久，每次都注入）────────────────────────────────
+    global_ctx = f"""
 ---
 
-## 用户状态数据（由 App 自动注入，用户不可见）
+## 全局用户画像（跨会话持久，每次都注入）
 
-### 基本信息
 - 伙伴名字（用户给你起的）：{companion_name}
 - 注册天数：{user_state.get('days_since_registration', 0)} 天
-- 是否首次对话：{user_state.get('is_first_conversation', False)}
+- 用户价值观摘要：{json.dumps(user_state.get('user_values_summary', {}), ensure_ascii=False)}
+- 用户常用活动列表：{user_state.get('user_top_activities', [])}
+- 有活动的生活领域：{user_state.get('life_areas_with_activities', [])}
+- 无活动的生活领域：{user_state.get('life_areas_without_activities', [])}"""
 
-### 活动记录数据
-- 本周活动记录总数：{user_state.get('total_records_this_week', 0)}
+    if user_summary:
+        global_ctx += f"\n- 跨会话用户画像摘要：{user_summary}"
+
+    # ── 当前会话状态（每次动态计算）──────────────────────────────────────────
+    session_ctx = f"""
+
+## 当前会话状态（动态计算，仅反映最新数据）
+
+### 活动记录
+- 本周记录总数：{user_state.get('total_records_this_week', 0)}
 - 连续无记录天数：{user_state.get('consecutive_days_no_record', 0)}
-- 近一周日均记录数：{user_state.get('avg_daily_records', 0)}
-- 近一周活动愉悦度均值：{user_state.get('avg_enjoyment_score', 'N/A')}（0-10）
-- 近一周活动重要性均值：{user_state.get('avg_importance_score', 'N/A')}（0-10）
-- 重要性高但愉悦度低的活动比例：{user_state.get('high_importance_low_enjoyment_ratio', 0)}
+- 日均记录数（近7天）：{user_state.get('avg_daily_records', 0)}
+- 近7天活动愉悦度均值：{user_state.get('avg_enjoyment_score', 'N/A')}（0-10）
+- 近7天活动重要性均值：{user_state.get('avg_importance_score', 'N/A')}（0-10）
+- 高重要低愉悦活动比例：{user_state.get('high_importance_low_enjoyment_ratio', 0)}
 
-### 活动计划数据
-- 本周计划活动数：{user_state.get('planned_activities_this_week', 0)}
-- 本周已完成计划：{user_state.get('completed_planned_activities', 0)}
+### 活动计划
+- 本周计划数：{user_state.get('planned_activities_this_week', 0)}
+- 本周已完成：{user_state.get('completed_planned_activities', 0)}
 - 本周完成率：{user_state.get('completion_rate_this_week', 0)}
 - 上周完成率：{user_state.get('completion_rate_last_week', 0)}
 - 连续高完成率（≥90%）周数：{user_state.get('consecutive_weeks_high_completion', 0)}
 - 连续低完成率（<40%）周数：{user_state.get('consecutive_weeks_low_completion', 0)}
 - 连续两次未完成的活动：{user_state.get('repeatedly_incomplete_activities', [])}
-- 近两周未完成活动总数：{user_state.get('total_incomplete_two_weeks', 0)}
+- 近两周未完成总数：{user_state.get('total_incomplete_two_weeks', 0)}
 
-### 活动库数据
-- 已填写价值观：{user_state.get('has_values', False)}
-- 已添加活动：{user_state.get('has_activities', False)}
-- 价值观质量问题：{user_state.get('values_quality_issue', None)}
-- 活动质量问题：{user_state.get('activities_quality_issue', None)}
-- 有活动的生活领域：{user_state.get('life_areas_with_activities', [])}
-- 无活动的生活领域：{user_state.get('life_areas_without_activities', [])}
-- 最主要领域活动占比：{user_state.get('dominant_life_area_ratio', 0)}
-
-### 情绪数据
+### 情绪
 - 本周日均情绪评分：{user_state.get('avg_mood_this_week', 'N/A')}（0-10）
 - 上周日均情绪评分：{user_state.get('avg_mood_last_week', 'N/A')}（0-10）
 - 情绪趋势：{user_state.get('mood_trend', 'stable')}
 - 连续情绪评分≥7的周数：{user_state.get('consecutive_weeks_good_mood', 0)}
 
-### 今日信息
+### 今日
 - 今日计划活动：{user_state.get('today_planned_activities', [])}
-- 今日已完成计划：{user_state.get('today_completed_activities', [])}
-- 今日已记录活动：{user_state.get('today_recorded_activities', [])}
+- 今日已完成：{user_state.get('today_completed_activities', [])}
+- 今日已记录：{user_state.get('today_recorded_activities', [])}
 - 今日情绪评分：{user_state.get('today_mood', 'N/A')}
-
-### 用户活动库摘要（用于对话中引用）
-- 用户价值观摘要：{json.dumps(user_state.get('user_values_summary', {}), ensure_ascii=False)}
-- 用户常用活动：{user_state.get('user_top_activities', [])}
 
 ### 触发信号
 - 本次应触发的对话类型：{user_state.get('active_triggers', [])}
-  （如果列表不为空，请在对话开头自然地引入对应触发对话的内容；如果列表为空，根据用户的输入进入相应模式）"""
+  （列表不为空时，在对话开头自然引入对应触发对话；列表为空时，根据用户输入进入相应模式）"""
 
     base = get_prompt("chatbot", CHATBOT_SYSTEM_PROMPT, db)
-    return base + state_text
+    return base + global_ctx + session_ctx

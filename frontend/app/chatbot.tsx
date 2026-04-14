@@ -10,8 +10,16 @@ import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
 import { useUserId } from '../src/userStore';
-import type { ChatMessage, UserState } from '../src/types';
+import type { ChatMessage, ChatSession, UserState } from '../src/types';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDate(isoString: string) {
+  const d = new Date(isoString);
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  return `${month}月${day}日`;
+}
 
 // ── Crisis modal ──────────────────────────────────────────────────────────────
 function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -176,87 +184,267 @@ function Bubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
+// ── History Modal ─────────────────────────────────────────────────────────────
+function HistoryModal({
+  visible, userId, onClose,
+}: { visible: boolean; userId: string; onClose: () => void }) {
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [selected, setSelected] = useState<ChatSession | null>(null);
+  const [sessionMsgs, setSessionMsgs] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    setSelected(null);
+    setLoading(true);
+    api.listSessions(userId)
+      .then(setSessions)
+      .catch(() => setSessions([]))
+      .finally(() => setLoading(false));
+  }, [visible, userId]);
+
+  const openSession = async (s: ChatSession) => {
+    setSelected(s);
+    setLoading(true);
+    try {
+      const msgs = await api.getSessionMessages(s.id, userId);
+      setSessionMsgs(msgs.map(m => ({ role: m.role, content: m.content })));
+    } catch {
+      setSessionMsgs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBack = () => setSelected(null);
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+      <SafeAreaView className="flex-1 bg-white">
+        {/* Header */}
+        <View className="flex-row items-center px-4 py-3 border-b border-gray-100">
+          {selected ? (
+            <TouchableOpacity onPress={handleBack} className="p-2 -ml-2 mr-1">
+              <Text className="text-gray-500 text-lg">←</Text>
+            </TouchableOpacity>
+          ) : null}
+          <Text className="flex-1 font-semibold text-gray-800 text-base">
+            {selected
+              ? (selected.title ?? formatDate(selected.created_at))
+              : '历史对话'}
+          </Text>
+          <TouchableOpacity onPress={onClose} className="p-2 -mr-2">
+            <Text className="text-gray-400 text-xl">✕</Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading ? (
+          <View className="flex-1 items-center justify-center">
+            <ActivityIndicator size="large" color="#f97316" />
+          </View>
+        ) : selected ? (
+          // Read-only message view
+          <FlatList
+            data={sessionMsgs}
+            keyExtractor={(_, i) => String(i)}
+            contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+            ListEmptyComponent={
+              <View className="items-center pt-16">
+                <Text className="text-gray-400 text-sm">这次对话没有消息记录</Text>
+              </View>
+            }
+            renderItem={({ item }) => <Bubble msg={item} />}
+          />
+        ) : (
+          // Session list
+          <FlatList
+            data={sessions}
+            keyExtractor={s => String(s.id)}
+            contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+            ListEmptyComponent={
+              <View className="items-center pt-16">
+                <XiaoNuan size={56} />
+                <Text className="text-gray-400 text-sm mt-4">还没有历史对话</Text>
+              </View>
+            }
+            renderItem={({ item: s }) => (
+              <TouchableOpacity
+                onPress={() => openSession(s)}
+                className="bg-gray-50 rounded-2xl px-4 py-4 mb-3 active:opacity-70"
+              >
+                <Text className="font-medium text-gray-800 mb-1" numberOfLines={1}>
+                  {s.title ?? '对话'}
+                </Text>
+                <Text className="text-xs text-gray-400" numberOfLines={1}>
+                  {formatDate(s.created_at)}
+                  {s.preview ? `  ·  ${s.preview}` : ''}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        )}
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
 // ── Main Chatbot ──────────────────────────────────────────────────────────────
 export default function ChatbotScreen() {
   const router = useRouter();
   const userId = useUserId();
-  const [userState, setUserState] = useState<UserState | null>(null);
 
+  const [userState, setUserState] = useState<UserState | null>(null);
+  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const [needsName, setNeedsName] = useState(false);
   const [showCrisis, setShowCrisis] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [detectedActivity, setDetectedActivity] = useState<{ type: 'completed' | 'planned'; name: string } | null>(null);
   const [showRecord, setShowRecord] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const listRef = useRef<FlatList>(null);
 
-  const scrollToEnd = useCallback(() => {
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-  }, []);
+  // ── Core send ───────────────────────────────────────────────────────────────
+  const _sendMessage = useCallback(async (text: string, sessionIdOverride?: number) => {
+    const sid = sessionIdOverride ?? currentSessionId;
+    if (!sid) return;
 
-  const _sendMessage = useCallback(async (text: string, stateOverride?: UserState, msgsOverride?: ChatMessage[]) => {
-    const state = stateOverride ?? userState;
-    const current = msgsOverride ?? messages;
-    const next: ChatMessage[] = text.trim() ? [...current, { role: 'user', content: text.trim() }] : current;
-
-    if (text.trim()) { setMessages(next); setInput(''); }
+    if (text.trim()) {
+      setMessages(prev => [...prev, { role: 'user', content: text.trim() }]);
+      setInput('');
+    }
     setLoading(true);
-    scrollToEnd();
 
     try {
-      const res = await api.sendChatMessage(next, userId);
+      const res = await api.sendChatMessage(sid, text.trim(), userId);
       if (res.is_crisis) setShowCrisis(true);
-      const withReply = [...next, { role: 'assistant' as const, content: res.reply }];
-      setMessages(withReply);
+      setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
       if (res.detected_activity) setDetectedActivity(res.detected_activity);
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
     } finally {
       setLoading(false);
-      scrollToEnd();
     }
-  }, [userState, messages, scrollToEnd]);
+  }, [currentSessionId, userId]);
 
-  const _startSession = useCallback(async (state: UserState) => {
-    setInitializing(false);
-    if (state.active_triggers.length > 0 || state.is_first_conversation) {
-      await _sendMessage('', state, []);
-    }
-  }, [_sendMessage]);
-
+  // ── Initialization ──────────────────────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
         const state = await api.getChatbotState(userId);
+        if (cancelled) return;
         setUserState(state);
+
+        // First-ever launch: ask for companion name
         if (state.companion_name === '小暖' && state.is_first_conversation) {
           setNeedsName(true);
           setInitializing(false);
           return;
         }
-        await _startSession(state);
-      } catch {
+
+        // Get or create a session
+        let session = await api.getCurrentSession(userId);
+        if (!session) {
+          session = await api.createChatSession(userId);
+        }
+        if (cancelled) return;
+        setCurrentSessionId(session.id);
+
+        // Load existing messages
+        const dbMsgs = await api.getSessionMessages(session.id, userId);
+        if (cancelled) return;
+        const msgs: ChatMessage[] = dbMsgs.map(m => ({ role: m.role, content: m.content }));
+        setMessages(msgs);
         setInitializing(false);
+
+        // Only trigger opening message for a brand-new (empty) session
+        if (msgs.length === 0 && (state.active_triggers.length > 0 || state.is_first_conversation)) {
+          if (cancelled) return;
+          setLoading(true);
+          try {
+            const res = await api.sendChatMessage(session.id, '', userId);
+            if (cancelled) return;
+            if (res.is_crisis) setShowCrisis(true);
+            setMessages([{ role: 'assistant', content: res.reply }]);
+            if (res.detected_activity) setDetectedActivity(res.detected_activity);
+          } catch {
+            setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+          } finally {
+            setLoading(false);
+          }
+        }
+      } catch {
+        if (!cancelled) setInitializing(false);
       }
     })();
-  }, []);
 
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Name confirm ────────────────────────────────────────────────────────────
   const handleNameConfirm = async (name: string) => {
     await api.setCompanionName(name, userId).catch(() => {});
     const state = await api.getChatbotState(userId);
     setUserState(state);
     setNeedsName(false);
-    await _startSession(state);
+
+    let session = await api.getCurrentSession(userId);
+    if (!session) session = await api.createChatSession(userId);
+    setCurrentSessionId(session.id);
+    setMessages([]);
+    setInitializing(false);
+
+    if (state.active_triggers.length > 0 || state.is_first_conversation) {
+      setLoading(true);
+      try {
+        const res = await api.sendChatMessage(session.id, '', userId);
+        if (res.is_crisis) setShowCrisis(true);
+        setMessages([{ role: 'assistant', content: res.reply }]);
+        if (res.detected_activity) setDetectedActivity(res.detected_activity);
+      } catch {
+        setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // ── New conversation ────────────────────────────────────────────────────────
+  const handleNewConversation = async () => {
+    try {
+      const session = await api.createChatSession(userId);
+      setCurrentSessionId(session.id);
+      setMessages([]);
+      setDetectedActivity(null);
+
+      const state = await api.getChatbotState(userId);
+      setUserState(state);
+
+      if (state.active_triggers.length > 0) {
+        setLoading(true);
+        try {
+          const res = await api.sendChatMessage(session.id, '', userId);
+          if (res.is_crisis) setShowCrisis(true);
+          setMessages([{ role: 'assistant', content: res.reply }]);
+          if (res.detected_activity) setDetectedActivity(res.detected_activity);
+        } catch {
+          setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+        } finally {
+          setLoading(false);
+        }
+      }
+    } catch {
+      Alert.alert('提示', '无法创建新对话，请重试');
+    }
   };
 
   const companionName = userState?.companion_name ?? '小暖';
-
-  const allItems: (ChatMessage | 'typing')[] = loading
-    ? [...messages, 'typing']
-    : messages;
+  const allItems: (ChatMessage | 'typing')[] = loading ? [...messages, 'typing'] : messages;
 
   return (
     <SafeAreaView className="flex-1 bg-orange-50" edges={['top']}>
@@ -266,10 +454,24 @@ export default function ChatbotScreen() {
           <Text className="text-gray-500 text-lg">←</Text>
         </TouchableOpacity>
         <XiaoNuan size={36} />
-        <View>
+        <View className="flex-1">
           <Text className="font-semibold text-gray-800 text-sm">{companionName}</Text>
           <Text className="text-xs text-gray-400">行为激活伙伴</Text>
         </View>
+        {/* History button */}
+        <TouchableOpacity
+          onPress={() => setShowHistory(true)}
+          className="px-3 py-1.5 rounded-xl bg-gray-100"
+        >
+          <Text className="text-xs text-gray-500">历史</Text>
+        </TouchableOpacity>
+        {/* New conversation button */}
+        <TouchableOpacity
+          onPress={handleNewConversation}
+          className="px-3 py-1.5 rounded-xl bg-orange-100 ml-1"
+        >
+          <Text className="text-xs text-orange-600 font-medium">新对话</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Body */}
@@ -290,7 +492,7 @@ export default function ChatbotScreen() {
             data={allItems}
             keyExtractor={(_, i) => String(i)}
             contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-            onContentSizeChange={scrollToEnd}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
               <View className="items-center pt-16">
                 <XiaoNuan size={64} />
@@ -298,9 +500,7 @@ export default function ChatbotScreen() {
               </View>
             }
             renderItem={({ item }) =>
-              item === 'typing'
-                ? <TypingDots />
-                : <Bubble msg={item as ChatMessage} />
+              item === 'typing' ? <TypingDots /> : <Bubble msg={item as ChatMessage} />
             }
           />
 
@@ -340,6 +540,13 @@ export default function ChatbotScreen() {
       )}
 
       <CrisisModal visible={showCrisis} onClose={() => setShowCrisis(false)} />
+
+      <HistoryModal
+        visible={showHistory}
+        userId={userId}
+        onClose={() => setShowHistory(false)}
+      />
+
       {showRecord && (
         <RecordModal
           visible={showRecord}

@@ -6,16 +6,17 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.llm_client import call_llm_chat
+from app.database import SessionLocal, get_db
+from app.llm_client import call_llm, call_llm_chat
 from app.models import (
     User, MoodRecord, PlannedActivity, DailyMood,
     Activity, Value, LifeDomain,
     TriggerLog, CompanionSettings,
+    ChatSession, ChatMessageRecord,
 )
 from app.prompts import chatbot_system_prompt
 
@@ -51,9 +52,8 @@ TRIGGER_PRIORITY = [
     "maintenance_planning",
 ]
 
-# Cooldown in days per trigger type
 TRIGGER_COOLDOWNS = {
-    "first_conversation": 0,       # only once (checked by is_first_conversation)
+    "first_conversation": 0,
     "monitoring_troubleshoot": 7,
     "values_quality_guidance": 7,
     "busy_but_depressed": 14,
@@ -76,18 +76,16 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     user = db.query(User).filter(User.id == user_id).first()
     days_since_registration = (now - user.created_at).days if user and user.created_at else 0
 
-    # Companion name
     cs = db.query(CompanionSettings).filter(CompanionSettings.user_id == user_id).first()
     companion_name = cs.companion_name if cs else "小暖"
+    user_summary = cs.user_summary if cs else None
 
-    # First conversation flag
     first_trigger = db.query(TriggerLog).filter(
         TriggerLog.user_id == user_id,
         TriggerLog.trigger_type == "first_conversation",
     ).first()
     is_first_conversation = first_trigger is None
 
-    # Date helpers
     week_ago = now - timedelta(days=7)
     two_weeks_ago = now - timedelta(days=14)
     week_start_str = (now - timedelta(days=6)).strftime("%Y-%m-%d")
@@ -95,7 +93,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     two_weeks_start_str = (now - timedelta(days=20)).strftime("%Y-%m-%d")
     day_start = datetime(now.year, now.month, now.day)
 
-    # ── MoodRecords ────────────────────────────────────────────────────────
     records_14d = (
         db.query(MoodRecord)
         .filter(MoodRecord.user_id == user_id, MoodRecord.timestamp >= two_weeks_ago)
@@ -107,7 +104,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     total_records_this_week = len(records_7d)
     avg_daily_records = round(len(records_7d) / 7, 1)
 
-    # Consecutive days no record
     consecutive_days_no_record = 0
     for i in range(7):
         d = (now - timedelta(days=i)).strftime("%Y-%m-%d")
@@ -128,7 +124,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     )
     high_importance_low_enjoyment_ratio = round(hi_lo / len(records_7d), 2) if records_7d else 0.0
 
-    # ── PlannedActivities ─────────────────────────────────────────────────
     def _planned_in_range(start_str: str, end_str: str):
         return (
             db.query(PlannedActivity)
@@ -175,7 +170,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     repeatedly_incomplete = [name for name, cnt in incomplete_counts.items() if cnt >= 2]
     total_incomplete_14d = sum(1 for p in all_planned_14d if not p.completed)
 
-    # ── Activity library ──────────────────────────────────────────────────
     has_values = db.query(Value).filter(Value.user_id == user_id).count() > 0
     has_activities = db.query(Activity).filter(Activity.user_id == user_id).count() > 0
 
@@ -200,7 +194,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         if total_acts > 0 else 0.0
     )
 
-    # Values summary grouped by domain
     values_by_domain: dict = {}
     for v in all_values:
         d_name = domain_id_to_name.get(v.life_domain_id, "其他")
@@ -210,7 +203,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         a.name for a in sorted(all_activities, key=lambda x: x.difficulty_rank or 99)[:10]
     ]
 
-    # ── Daily mood ────────────────────────────────────────────────────────
     daily_moods_7d = (
         db.query(DailyMood)
         .filter(DailyMood.user_id == user_id, DailyMood.date >= week_start_str)
@@ -246,7 +238,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
 
     today_daily_mood = next((m.mood_score for m in daily_moods_7d if m.date == today_str), None)
 
-    # ── Today data ────────────────────────────────────────────────────────
     today_planned_all = (
         db.query(PlannedActivity)
         .filter(PlannedActivity.user_id == user_id, PlannedActivity.scheduled_date == today_str)
@@ -256,7 +247,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     today_completed_names = [p.activity_name for p in today_planned_all if p.completed]
     today_recorded_names = [r.activity for r in today_records if r.activity]
 
-    # ── Trigger calculation ────────────────────────────────────────────────
     trigger_logs_all = (
         db.query(TriggerLog).filter(TriggerLog.user_id == user_id).all()
     )
@@ -310,12 +300,12 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
             and _cooldown_ok("maintenance_planning")):
         active_triggers.append("maintenance_planning")
 
-    # Sort by priority, keep only top one
     active_triggers.sort(key=lambda t: TRIGGER_PRIORITY.index(t) if t in TRIGGER_PRIORITY else 99)
     top_trigger = active_triggers[:1]
 
     return {
         "companion_name": companion_name,
+        "user_summary": user_summary,
         "days_since_registration": days_since_registration,
         "is_first_conversation": is_first_conversation,
         "total_records_this_week": total_records_this_week,
@@ -355,14 +345,11 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
 
 
 # ── Activity tag parsing ──────────────────────────────────────────────────────
-# LLM embeds [ACT:done:名称] or [ACT:plan:名称] at the end of its reply.
-# We parse and strip it here; the user never sees the tag.
 
 _ACT_TAG = re.compile(r'\[ACT:(done|plan):([^\]]{1,30})\]\s*$', re.MULTILINE)
 
 
 def _extract_activity_tag(reply: str) -> tuple[str, Optional[dict]]:
-    """Strip [ACT:...] tag from reply. Returns (clean_reply, detected_activity | None)."""
     m = _ACT_TAG.search(reply)
     if not m:
         return reply, None
@@ -370,7 +357,6 @@ def _extract_activity_tag(reply: str) -> tuple[str, Optional[dict]]:
     act_name = m.group(2).strip()
     clean = reply[:m.start()].rstrip()
     return clean, {"type": act_type, "name": act_name}
-
 
 
 # ── Trigger log helpers ───────────────────────────────────────────────────────
@@ -387,16 +373,38 @@ def _record_trigger(db: Session, user_id: str, trigger_type: str):
     db.commit()
 
 
+# ── Session title background task ─────────────────────────────────────────────
+
+async def _generate_session_title(session_id: int, context_messages: list[dict]):
+    """Background task: ask LLM for a short session title, then save it."""
+    db = SessionLocal()
+    try:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not session or session.title:
+            return  # Already titled or session gone
+
+        lines = "\n".join(
+            f"{'用户' if m['role'] == 'user' else '小暖'}: {m['content'][:120]}"
+            for m in context_messages[:8]
+        )
+        system = "你是一个对话标题生成器。根据给定对话内容，输出一个5-10字的中文短语作为标题，不含标点，直接输出短语本身，例如：关于职场压力的讨论"
+        title = await call_llm(system, lines)
+        title = title.strip().strip("。，！？")[:60]
+
+        session.title = title
+        db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
-
-class ChatMessage(BaseModel):
-    role: str   # "user" | "assistant"
-    content: str
-
 
 class ChatRequest(BaseModel):
     user_id: str = "default_user"
-    messages: list[ChatMessage]
+    session_id: int
+    message: str   # empty string = session-start trigger (no user message saved)
 
 
 class CompanionNameRequest(BaseModel):
@@ -412,22 +420,117 @@ async def get_chatbot_state(
     db: Session = Depends(get_db),
 ):
     """Return computed user state for the chatbot session."""
-    state = _compute_user_state(db, user_id)
-    return state
+    return _compute_user_state(db, user_id)
+
+
+# ── Session endpoints (must be before /{session_id} style routes) ─────────────
+
+@router.post("/session")
+async def create_session(
+    user_id: str = Query(default="default_user"),
+    db: Session = Depends(get_db),
+):
+    """Create a new chat session."""
+    session = ChatSession(user_id=user_id)
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return {
+        "id": session.id,
+        "title": session.title,
+        "created_at": session.created_at.isoformat(),
+    }
+
+
+@router.get("/session/current")
+async def get_current_session(
+    user_id: str = Query(default="default_user"),
+    db: Session = Depends(get_db),
+):
+    """Return the most recent session for this user, or null if none."""
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user_id)
+        .order_by(ChatSession.created_at.desc())
+        .first()
+    )
+    if not session:
+        return None
+    return {
+        "id": session.id,
+        "title": session.title,
+        "created_at": session.created_at.isoformat(),
+    }
+
+
+@router.get("/sessions")
+async def list_sessions(
+    user_id: str = Query(default="default_user"),
+    db: Session = Depends(get_db),
+):
+    """Return all sessions for this user, newest first, with preview text."""
+    sessions = (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user_id)
+        .order_by(ChatSession.created_at.desc())
+        .all()
+    )
+    result = []
+    for s in sessions:
+        first_user_msg = (
+            db.query(ChatMessageRecord)
+            .filter(
+                ChatMessageRecord.session_id == s.id,
+                ChatMessageRecord.role == "user",
+            )
+            .order_by(ChatMessageRecord.created_at.asc())
+            .first()
+        )
+        result.append({
+            "id": s.id,
+            "title": s.title,
+            "created_at": s.created_at.isoformat(),
+            "preview": first_user_msg.content[:50] if first_user_msg else None,
+        })
+    return result
+
+
+@router.get("/session/{session_id}/messages")
+async def get_session_messages(
+    session_id: int,
+    user_id: str = Query(default="default_user"),
+    db: Session = Depends(get_db),
+):
+    """Return all messages in a session, oldest first."""
+    messages = (
+        db.query(ChatMessageRecord)
+        .filter(
+            ChatMessageRecord.session_id == session_id,
+            ChatMessageRecord.user_id == user_id,
+        )
+        .order_by(ChatMessageRecord.created_at.asc())
+        .all()
+    )
+    return [
+        {
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in messages
+    ]
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest, db: Session = Depends(get_db)):
-    """Process a chat turn. Client sends full message history; returns next reply."""
-    if not req.messages:
-        return {"reply": "你好，有什么想聊的吗？", "is_crisis": False, "detected_activity": None}
-
-    last_user_msg = next(
-        (m.content for m in reversed(req.messages) if m.role == "user"), ""
-    )
-
-    # Crisis detection (keyword scan before LLM call)
-    if _is_crisis(last_user_msg):
+async def chat(
+    req: ChatRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Process a chat turn. Client sends session_id + single message; history is loaded from DB."""
+    # Crisis detection before any LLM call
+    if req.message.strip() and _is_crisis(req.message):
         return {
             "reply": (
                 "你说的这些让我很担心你。我很希望你能跟现实中的人聊聊。\n\n"
@@ -439,26 +542,62 @@ async def chat(req: ChatRequest, db: Session = Depends(get_db)):
             "detected_activity": None,
         }
 
+    # Load existing history from DB
+    db_messages = (
+        db.query(ChatMessageRecord)
+        .filter(ChatMessageRecord.session_id == req.session_id)
+        .order_by(ChatMessageRecord.created_at.asc())
+        .all()
+    )
+    history = [{"role": m.role, "content": m.content} for m in db_messages]
+
+    # Save the incoming user message (if non-empty)
+    if req.message.strip():
+        db.add(ChatMessageRecord(
+            session_id=req.session_id,
+            user_id=req.user_id,
+            role="user",
+            content=req.message.strip(),
+        ))
+        db.commit()
+
+    # Build LLM payload: last 20 messages + new user message
+    llm_messages = history[-20:]
+    if req.message.strip():
+        llm_messages = llm_messages + [{"role": "user", "content": req.message.strip()}]
+
     # Compute user state and build system prompt
     state = _compute_user_state(db, req.user_id)
     companion_name = state["companion_name"]
     system = chatbot_system_prompt(state, companion_name, db=db)
 
-    # Call LLM with full conversation history
-    messages_payload = [{"role": m.role, "content": m.content} for m in req.messages]
-    reply = await call_llm_chat(system, messages_payload)
+    # Call LLM
+    reply = await call_llm_chat(system, llm_messages)
 
-    # Record first_conversation trigger if applicable
+    # Record triggers
     if state["is_first_conversation"]:
         _record_trigger(db, req.user_id, "first_conversation")
-
-    # Record any active triggers that were processed
     for trigger in state.get("active_triggers", []):
         if trigger != "first_conversation":
             _record_trigger(db, req.user_id, trigger)
 
-    # Parse and strip [ACT:...] tag embedded by the LLM
+    # Strip hidden [ACT:...] tag
     reply, detected = _extract_activity_tag(reply)
+
+    # Save assistant reply to DB
+    db.add(ChatMessageRecord(
+        session_id=req.session_id,
+        user_id=req.user_id,
+        role="assistant",
+        content=reply,
+    ))
+    db.commit()
+
+    # Schedule title generation after first real user message in the session
+    session = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+    if session and not session.title and req.message.strip():
+        title_ctx = (llm_messages + [{"role": "assistant", "content": reply}])[-8:]
+        background_tasks.add_task(_generate_session_title, req.session_id, title_ctx)
 
     return {
         "reply": reply,
