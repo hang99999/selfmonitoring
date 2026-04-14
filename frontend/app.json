@@ -22,10 +22,18 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#fff7ed"
       },
-      "package": "com.xiaonuan.ba"
+      "package": "com.xiaonuan.ba",
+      "usesCleartextTraffic": true
     },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b823e158-139a-403e-a67c-796dbf6a55e1"
+      }
+    },
+    "owner": "xiehx"
   }
 }
