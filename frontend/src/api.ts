@@ -214,6 +214,12 @@ export const api = {
   getTreatmentProgress: (userId = 'default_user') =>
     request<TreatmentProgressData>(`/api/chatbot/treatment/progress?user_id=${userId}`),
 
+  debugSetPhase: (userId: string, phase: string, phaseDays = 7, reviewCycleCount = 1) =>
+    request<{ ok: boolean }>('/api/chatbot/treatment/debug', {
+      method: 'PUT',
+      body: JSON.stringify({ user_id: userId, phase, phase_days: phaseDays, review_cycle_count: reviewCycleCount }),
+    }),
+
   setCompanionName: (name: string, userId = 'default_user') =>
     request<{ ok: boolean; companion_name: string }>('/api/chatbot/companion-name', {
       method: 'PUT',

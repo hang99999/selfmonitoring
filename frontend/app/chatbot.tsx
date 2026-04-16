@@ -215,8 +215,23 @@ const PHASE_ROADMAP = [
 
 const PHASE_ORDER = ['intro', 'setup', 'first_review', 'review_cycle'] as const;
 
-function TreatmentProgressCard({ data }: { data: TreatmentProgressData }) {
+function TreatmentProgressCard({
+  data, userId, onPhaseChanged,
+}: { data: TreatmentProgressData; userId: string; onPhaseChanged: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDev, setShowDev] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  const switchPhase = async (phase: string, cycleCount = 1) => {
+    setSwitching(true);
+    try {
+      await api.debugSetPhase(userId, phase, 7, cycleCount);
+      setShowDev(false);
+      onPhaseChanged();
+    } catch { /* ignore */ } finally {
+      setSwitching(false);
+    }
+  };
 
   const currentIdx = PHASE_ORDER.indexOf(data.phase as typeof PHASE_ORDER[number]);
   const criteriaCount = data.criteria.length;
@@ -232,18 +247,53 @@ function TreatmentProgressCard({ data }: { data: TreatmentProgressData }) {
         : `${doneCriteria}/${criteriaCount} 项完成`;
 
   return (
-    <TouchableOpacity
-      onPress={() => setExpanded(e => !e)}
-      activeOpacity={0.8}
-      className="mx-4 mt-2 mb-1 bg-white border border-orange-100 rounded-2xl overflow-hidden"
-    >
-      {/* Collapsed header — always visible */}
-      <View className="flex-row items-center px-4 py-2.5 gap-2">
+    <View className="mx-4 mt-2 mb-1 bg-white border border-orange-100 rounded-2xl overflow-hidden">
+      {/* Collapsed header — tap to expand, long-press for dev panel */}
+      <TouchableOpacity
+        onPress={() => setExpanded(e => !e)}
+        onLongPress={() => setShowDev(v => !v)}
+        delayLongPress={800}
+        activeOpacity={0.8}
+        className="flex-row items-center px-4 py-2.5 gap-2"
+      >
         <View className="w-2 h-2 rounded-full bg-orange-400" />
         <Text className="flex-1 text-xs font-medium text-gray-700">{data.phase_label}</Text>
         <Text className="text-xs text-gray-400 mr-1">{summaryText}</Text>
         <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
-      </View>
+      </TouchableOpacity>
+
+      {/* Dev panel (long-press to reveal) */}
+      {showDev && (
+        <View className="px-4 py-3 bg-gray-50 border-t border-dashed border-gray-200 gap-2">
+          <Text className="text-[10px] text-gray-400 font-medium mb-1">🛠 开发者模式 · 切换阶段</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {[
+              { label: 'Week 1',  phase: 'intro' },
+              { label: 'Week 2',  phase: 'setup' },
+              { label: 'Week 3',  phase: 'first_review' },
+              { label: '执行循环', phase: 'review_cycle' },
+            ].map(({ label, phase }) => (
+              <TouchableOpacity
+                key={phase}
+                onPress={() => switchPhase(phase)}
+                disabled={switching || data.phase === phase}
+                className={`px-3 py-1.5 rounded-xl border ${
+                  data.phase === phase
+                    ? 'bg-orange-100 border-orange-300'
+                    : 'bg-white border-gray-200'
+                }`}
+              >
+                <Text className={`text-xs font-medium ${
+                  data.phase === phase ? 'text-orange-600' : 'text-gray-500'
+                }`}>
+                  {data.phase === phase ? `● ${label}` : label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {switching && <Text className="text-[10px] text-gray-400">切换中…</Text>}
+        </View>
+      )}
 
       {/* Expanded: full roadmap */}
       {expanded && (
@@ -342,7 +392,7 @@ function TreatmentProgressCard({ data }: { data: TreatmentProgressData }) {
           })}
         </View>
       )}
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -647,7 +697,13 @@ export default function ChatbotScreen() {
 
       {/* Treatment progress card */}
       {!initializing && !needsName && treatmentProgress && (
-        <TreatmentProgressCard data={treatmentProgress} />
+        <TreatmentProgressCard
+          data={treatmentProgress}
+          userId={userId}
+          onPhaseChanged={() =>
+            api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})
+          }
+        />
       )}
 
       {/* Body */}
