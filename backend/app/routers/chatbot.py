@@ -754,6 +754,30 @@ async def get_treatment_progress(
     }
 
 
+class TreatmentDebugRequest(BaseModel):
+    user_id: str = "default_user"
+    phase: str                    # intro | setup | first_review | review_cycle
+    phase_days: int = 7           # 模拟已在该阶段过了多少天（>=7 可触发解锁检查）
+    review_cycle_count: int = 1   # review_cycle 阶段用
+
+
+@router.put("/treatment/debug")
+async def debug_set_treatment_phase(req: TreatmentDebugRequest, db: Session = Depends(get_db)):
+    """[开发用] 直接设置治疗阶段，跳过时间门槛。"""
+    valid_phases = {"intro", "setup", "first_review", "review_cycle"}
+    if req.phase not in valid_phases:
+        return {"ok": False, "error": f"phase must be one of {valid_phases}"}
+
+    progress = _get_or_create_progress(db, req.user_id)
+    progress.phase = req.phase
+    progress.review_cycle_count = req.review_cycle_count if req.phase == "review_cycle" else 0
+    # 把 phase_unlocked_at 设为 req.phase_days 天前，这样 phase_age_days 就等于 req.phase_days
+    progress.phase_unlocked_at = datetime.now() - timedelta(days=req.phase_days)
+    progress.updated_at = datetime.now()
+    db.commit()
+    return {"ok": True, "phase": progress.phase, "phase_days": req.phase_days}
+
+
 @router.put("/companion-name")
 async def set_companion_name(req: CompanionNameRequest, db: Session = Depends(get_db)):
     """Save or update the companion's name."""
