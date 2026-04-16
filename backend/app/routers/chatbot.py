@@ -88,7 +88,7 @@ def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progre
 
     if phase == "intro":
         total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
-        if total_records >= 3:
+        if phase_age_days >= 7 and total_records >= 3:
             progress.phase = "setup"
             progress.phase_unlocked_at = now
             progress.updated_at = now
@@ -98,7 +98,7 @@ def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progre
         has_values = user_state.get("has_values", False)
         activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
         planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
-        if phase_age_days >= 3 and has_values and activity_count >= 3 and planned_ever >= 1:
+        if phase_age_days >= 7 and has_values and activity_count >= 3 and planned_ever >= 1:
             progress.phase = "first_review"
             progress.phase_unlocked_at = now
             progress.updated_at = now
@@ -109,7 +109,7 @@ def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progre
             PlannedActivity.user_id == user_id,
             PlannedActivity.completed == True,
         ).count()
-        if phase_age_days >= 3 and any_completed >= 1:
+        if phase_age_days >= 7 and any_completed >= 1:
             progress.phase = "review_cycle"
             progress.review_cycle_count = 1
             progress.phase_unlocked_at = now
@@ -691,13 +691,66 @@ async def get_treatment_progress(
     user_id: str = Query(default="default_user"),
     db: Session = Depends(get_db),
 ):
-    """Return the user's current treatment phase and cycle count."""
+    """Return the user's current treatment phase with detailed criteria status."""
     progress = _get_or_create_progress(db, user_id)
+    now = datetime.now()
+    phase_days = (now - progress.phase_unlocked_at).days
+    days_until_eligible = max(0, 7 - phase_days)
+
+    phase = progress.phase
+    cycle = progress.review_cycle_count
+
+    PHASE_LABELS = {
+        "intro":        "Week 1 · 启动监测",
+        "setup":        "Week 2 · 价值观 × 活动 × 计划",
+        "first_review": "Week 3 · 首次回顾",
+        "review_cycle": f"执行循环 · 第 {cycle} 周",
+    }
+
+    # Build criteria list for each phase
+    criteria = []
+    if phase == "intro":
+        total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
+        criteria = [{"key": "records", "label": "提交至少3条活动记录",
+                     "done": total_records >= 3, "current": total_records, "target": 3}]
+
+    elif phase == "setup":
+        has_values = db.query(Value).filter(Value.user_id == user_id).count() > 0
+        activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
+        planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
+        criteria = [
+            {"key": "values",     "label": "填写生活领域和价值观",  "done": has_values,            "current": 1 if has_values else 0, "target": 1},
+            {"key": "activities", "label": "在活动库中添加至少3个活动", "done": activity_count >= 3, "current": activity_count,         "target": 3},
+            {"key": "planned",    "label": "安排至少1个计划活动",   "done": planned_ever >= 1,     "current": min(planned_ever, 1),   "target": 1},
+        ]
+
+    elif phase == "first_review":
+        any_completed = db.query(PlannedActivity).filter(
+            PlannedActivity.user_id == user_id,
+            PlannedActivity.completed == True,
+        ).count()
+        criteria = [
+            {"key": "completed", "label": "完成至少1个计划活动", "done": any_completed >= 1, "current": min(any_completed, 1), "target": 1},
+        ]
+
+    elif phase == "review_cycle":
+        # No hard criteria — show weekly cycle info instead
+        days_into_cycle = phase_days % 7
+        days_until_eligible = max(0, 7 - days_into_cycle)
+        criteria = []
+
+    criteria_met = all(c["done"] for c in criteria) if criteria else True
+    can_advance = criteria_met and days_until_eligible == 0 and phase != "review_cycle"
+
     return {
-        "phase": progress.phase,
-        "review_cycle_count": progress.review_cycle_count,
-        "phase_unlocked_at": progress.phase_unlocked_at.isoformat(),
-        "phase_days": (datetime.now() - progress.phase_unlocked_at).days,
+        "phase": phase,
+        "phase_label": PHASE_LABELS.get(phase, phase),
+        "review_cycle_count": cycle,
+        "phase_days": phase_days,
+        "days_until_eligible": days_until_eligible,
+        "criteria": criteria,
+        "criteria_met": criteria_met,
+        "can_advance": can_advance,
     }
 
 

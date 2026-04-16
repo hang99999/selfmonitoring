@@ -105,6 +105,25 @@ export interface ChatResponse {
   detected_activity: { type: 'completed' | 'planned'; name: string } | null;
 }
 
+export interface TreatmentCriterion {
+  key: string;
+  label: string;
+  done: boolean;
+  current?: number;
+  target?: number;
+}
+
+export interface TreatmentProgressData {
+  phase: 'intro' | 'setup' | 'first_review' | 'review_cycle';
+  phase_label: string;
+  review_cycle_count: number;
+  phase_days: number;
+  days_until_eligible: number;
+  criteria: TreatmentCriterion[];
+  criteria_met: boolean;
+  can_advance: boolean;
+}
+
 export interface UserState {
   companion_name: string;
   days_since_registration: number;

@@ -2,6 +2,7 @@ import type {
   MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
+  TreatmentProgressData,
 } from './types';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
@@ -209,6 +210,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, session_id: sessionId, message }),
     }),
+
+  getTreatmentProgress: (userId = 'default_user') =>
+    request<TreatmentProgressData>(`/api/chatbot/treatment/progress?user_id=${userId}`),
 
   setCompanionName: (name: string, userId = 'default_user') =>
     request<{ ok: boolean; companion_name: string }>('/api/chatbot/companion-name', {

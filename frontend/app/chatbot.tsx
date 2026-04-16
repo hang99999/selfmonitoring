@@ -10,7 +10,7 @@ import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
 import { useUserId } from '../src/userStore';
-import type { ChatMessage, ChatSession, UserState } from '../src/types';
+import type { ChatMessage, ChatSession, UserState, TreatmentProgressData } from '../src/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -184,6 +184,73 @@ function Bubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
+// ── Treatment Progress Card ───────────────────────────────────────────────────
+function TreatmentProgressCard({ data }: { data: TreatmentProgressData }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const criteriaCount = data.criteria.length;
+  const doneCriteria = data.criteria.filter(c => c.done).length;
+  const isForever = data.phase === 'review_cycle';
+
+  const summaryText = isForever
+    ? `第 ${data.review_cycle_count} 周 · 持续执行中`
+    : data.days_until_eligible > 0
+      ? `${doneCriteria}/${criteriaCount} 项完成 · 还差 ${data.days_until_eligible} 天`
+      : data.criteria_met
+        ? '条件已达成，等待推进'
+        : `${doneCriteria}/${criteriaCount} 项完成`;
+
+  return (
+    <TouchableOpacity
+      onPress={() => setExpanded(e => !e)}
+      activeOpacity={0.8}
+      className="mx-4 mt-2 mb-1 bg-white border border-orange-100 rounded-2xl overflow-hidden"
+    >
+      {/* Collapsed header — always visible */}
+      <View className="flex-row items-center px-4 py-2.5 gap-2">
+        <View className="w-2 h-2 rounded-full bg-orange-400" />
+        <Text className="flex-1 text-xs font-medium text-gray-700">{data.phase_label}</Text>
+        <Text className="text-xs text-gray-400 mr-1">{summaryText}</Text>
+        <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
+      </View>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <View className="px-4 pb-3 border-t border-orange-50 pt-2 gap-2">
+          {/* Criteria list */}
+          {data.criteria.map(c => (
+            <View key={c.key} className="flex-row items-center gap-2">
+              <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
+                {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
+              </View>
+              <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                {c.label}
+              </Text>
+              {c.target !== undefined && c.target > 1 && (
+                <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
+              )}
+            </View>
+          ))}
+
+          {isForever ? (
+            <Text className="text-xs text-gray-400 mt-1">
+              已进入持续执行阶段 · 每7天进入新一轮回顾
+            </Text>
+          ) : data.days_until_eligible > 0 ? (
+            <Text className="text-xs text-orange-400 mt-1">
+              本阶段已进行 {data.phase_days} 天，还需 {data.days_until_eligible} 天才能进入下一阶段
+            </Text>
+          ) : data.criteria_met ? (
+            <Text className="text-xs text-green-500 mt-1">所有条件已达成，即将进入下一阶段</Text>
+          ) : (
+            <Text className="text-xs text-gray-400 mt-1">时间条件已满足，完成以上条件后自动进入下一阶段</Text>
+          )}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
 // ── History Modal ─────────────────────────────────────────────────────────────
 function HistoryModal({
   visible, userId, onClose,
@@ -294,6 +361,7 @@ export default function ChatbotScreen() {
   const userId = useUserId();
 
   const [userState, setUserState] = useState<UserState | null>(null);
+  const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -336,9 +404,13 @@ export default function ChatbotScreen() {
 
     (async () => {
       try {
-        const state = await api.getChatbotState(userId);
+        const [state, progress] = await Promise.all([
+          api.getChatbotState(userId),
+          api.getTreatmentProgress(userId).catch(() => null),
+        ]);
         if (cancelled) return;
         setUserState(state);
+        setTreatmentProgress(progress);
 
         // First-ever launch: ask for companion name
         if (state.companion_name === '小暖' && state.is_first_conversation) {
@@ -422,8 +494,12 @@ export default function ChatbotScreen() {
       setMessages([]);
       setDetectedActivity(null);
 
-      const state = await api.getChatbotState(userId);
+      const [state, progress] = await Promise.all([
+        api.getChatbotState(userId),
+        api.getTreatmentProgress(userId).catch(() => null),
+      ]);
       setUserState(state);
+      setTreatmentProgress(progress);
 
       if (state.active_triggers.length > 0) {
         setLoading(true);
@@ -473,6 +549,11 @@ export default function ChatbotScreen() {
           <Text className="text-xs text-orange-600 font-medium">新对话</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Treatment progress card */}
+      {!initializing && !needsName && treatmentProgress && (
+        <TreatmentProgressCard data={treatmentProgress} />
+      )}
 
       {/* Body */}
       {initializing ? (
