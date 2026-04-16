@@ -185,9 +185,40 @@ function Bubble({ msg }: { msg: ChatMessage }) {
 }
 
 // ── Treatment Progress Card ───────────────────────────────────────────────────
+
+const PHASE_ROADMAP = [
+  {
+    key: 'intro',
+    weekLabel: 'Week 1',
+    title: '启动监测',
+    desc: '理解行为激活原理，开始记录每天的活动',
+  },
+  {
+    key: 'setup',
+    weekLabel: 'Week 2',
+    title: '价值观 × 活动 × 计划',
+    desc: '从价值观出发，建立活动库，制定第一个计划',
+  },
+  {
+    key: 'first_review',
+    weekLabel: 'Week 3',
+    title: '首次回顾',
+    desc: '回顾第一周计划，排查障碍，引入社会支持',
+  },
+  {
+    key: 'review_cycle',
+    weekLabel: '持续执行',
+    title: '每周回顾循环',
+    desc: '每周：回顾 → 障碍处理 → 新计划，长期使用',
+  },
+] as const;
+
+const PHASE_ORDER = ['intro', 'setup', 'first_review', 'review_cycle'] as const;
+
 function TreatmentProgressCard({ data }: { data: TreatmentProgressData }) {
   const [expanded, setExpanded] = useState(false);
 
+  const currentIdx = PHASE_ORDER.indexOf(data.phase as typeof PHASE_ORDER[number]);
   const criteriaCount = data.criteria.length;
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const isForever = data.phase === 'review_cycle';
@@ -214,37 +245,101 @@ function TreatmentProgressCard({ data }: { data: TreatmentProgressData }) {
         <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
       </View>
 
-      {/* Expanded detail */}
+      {/* Expanded: full roadmap */}
       {expanded && (
-        <View className="px-4 pb-3 border-t border-orange-50 pt-2 gap-2">
-          {/* Criteria list */}
-          {data.criteria.map(c => (
-            <View key={c.key} className="flex-row items-center gap-2">
-              <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
-                {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
-              </View>
-              <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
-                {c.label}
-              </Text>
-              {c.target !== undefined && c.target > 1 && (
-                <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
-              )}
-            </View>
-          ))}
+        <View className="border-t border-orange-50 pt-3 pb-3">
+          {PHASE_ROADMAP.map((phase, idx) => {
+            const isPast    = idx < currentIdx;
+            const isCurrent = idx === currentIdx;
+            const isFuture  = idx > currentIdx;
 
-          {isForever ? (
-            <Text className="text-xs text-gray-400 mt-1">
-              已进入持续执行阶段 · 每7天进入新一轮回顾
-            </Text>
-          ) : data.days_until_eligible > 0 ? (
-            <Text className="text-xs text-orange-400 mt-1">
-              本阶段已进行 {data.phase_days} 天，还需 {data.days_until_eligible} 天才能进入下一阶段
-            </Text>
-          ) : data.criteria_met ? (
-            <Text className="text-xs text-green-500 mt-1">所有条件已达成，即将进入下一阶段</Text>
-          ) : (
-            <Text className="text-xs text-gray-400 mt-1">时间条件已满足，完成以上条件后自动进入下一阶段</Text>
-          )}
+            return (
+              <View key={phase.key} className="flex-row px-4 mb-3">
+                {/* Timeline column */}
+                <View className="items-center mr-3" style={{ width: 20 }}>
+                  {/* Node */}
+                  <View className={`w-5 h-5 rounded-full items-center justify-center
+                    ${isPast    ? 'bg-green-400' : ''}
+                    ${isCurrent ? 'bg-orange-400' : ''}
+                    ${isFuture  ? 'bg-gray-200'  : ''}
+                  `}>
+                    {isPast    && <Text className="text-white text-[9px] font-bold">✓</Text>}
+                    {isCurrent && <Text className="text-white text-[9px] font-bold">●</Text>}
+                    {isFuture  && <Text className="text-gray-400 text-[9px]">○</Text>}
+                  </View>
+                  {/* Connector line (not on last item) */}
+                  {idx < PHASE_ROADMAP.length - 1 && (
+                    <View className={`w-0.5 flex-1 mt-1 ${isPast ? 'bg-green-200' : 'bg-gray-100'}`}
+                      style={{ minHeight: 16 }} />
+                  )}
+                </View>
+
+                {/* Content column */}
+                <View className="flex-1 pb-1">
+                  <View className="flex-row items-center gap-1.5 mb-0.5">
+                    <Text className={`text-[10px] font-semibold
+                      ${isPast ? 'text-green-500' : isCurrent ? 'text-orange-500' : 'text-gray-300'}
+                    `}>
+                      {phase.weekLabel}
+                    </Text>
+                    <Text className={`text-xs font-medium
+                      ${isPast ? 'text-gray-400' : isCurrent ? 'text-gray-800' : 'text-gray-300'}
+                    `}>
+                      {phase.title}
+                    </Text>
+                    {isPast && <Text className="text-[10px] text-green-400 ml-1">已完成</Text>}
+                    {isFuture && <Text className="text-[10px] text-gray-300 ml-1">🔒</Text>}
+                  </View>
+
+                  <Text className={`text-[11px] leading-relaxed
+                    ${isCurrent ? 'text-gray-500' : 'text-gray-300'}
+                  `}>
+                    {phase.desc}
+                  </Text>
+
+                  {/* Current phase: show criteria */}
+                  {isCurrent && data.criteria.length > 0 && (
+                    <View className="mt-2 gap-1.5">
+                      {data.criteria.map(c => (
+                        <View key={c.key} className="flex-row items-center gap-1.5">
+                          <View className={`w-3.5 h-3.5 rounded-full items-center justify-center
+                            ${c.done ? 'bg-green-400' : 'bg-gray-200'}
+                          `}>
+                            {c.done && <Text className="text-white text-[8px] font-bold">✓</Text>}
+                          </View>
+                          <Text className={`text-[11px] flex-1 ${c.done ? 'text-gray-300 line-through' : 'text-gray-600'}`}>
+                            {c.label}
+                          </Text>
+                          {c.target !== undefined && c.target > 1 && (
+                            <Text className="text-[11px] text-gray-400">{c.current}/{c.target}</Text>
+                          )}
+                        </View>
+                      ))}
+
+                      <Text className={`text-[11px] mt-1
+                        ${isForever ? 'text-gray-400' : data.days_until_eligible > 0 ? 'text-orange-400' : data.criteria_met ? 'text-green-500' : 'text-gray-400'}
+                      `}>
+                        {isForever
+                          ? `已进入持续执行阶段 · 每7天进入新一轮回顾`
+                          : data.days_until_eligible > 0
+                            ? `本阶段第 ${data.phase_days} 天，还需 ${data.days_until_eligible} 天才能推进`
+                            : data.criteria_met
+                              ? '所有条件已达成，即将进入下一阶段'
+                              : '时间条件已满足，完成以上条件后自动推进'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Current phase with no criteria (review_cycle) */}
+                  {isCurrent && data.criteria.length === 0 && (
+                    <Text className="text-[11px] text-gray-400 mt-1">
+                      {`第 ${data.review_cycle_count} 周 · 持续执行中`}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
         </View>
       )}
     </TouchableOpacity>
