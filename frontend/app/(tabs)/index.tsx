@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   Modal, TextInput, Pressable, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
@@ -196,46 +196,57 @@ const PHASE_CONVERSATION: Record<string, string> = {
 };
 
 function PhaseCard({ data, onPress }: { data: TreatmentProgressData; onPress: () => void }) {
+  const [expanded, setExpanded] = useState(false);
   const isOngoing = data.phase === 'review_cycle';
-  return (
-    <View className="w-full bg-white rounded-2xl border border-orange-100 px-5 py-4 mb-6">
-      <View className="flex-row items-center gap-2 mb-3">
-        <View className="w-2 h-2 rounded-full bg-orange-400" />
-        <Text className="text-xs font-semibold text-orange-500">{data.phase_label}</Text>
-      </View>
+  const doneCriteria = data.criteria.filter(c => c.done).length;
+  const totalCriteria = data.criteria.length;
 
-      <Text className="text-xs font-medium text-gray-400 mb-1">
-        {isOngoing ? '本周对话' : '本阶段对话'}
-      </Text>
-      <Text className="text-sm text-gray-700 leading-relaxed mb-4">
+  return (
+    <View className="w-full bg-white rounded-2xl border border-orange-100 mb-6 overflow-hidden">
+      {/* Header row — always visible, tap to expand */}
+      <TouchableOpacity
+        onPress={() => setExpanded(e => !e)}
+        activeOpacity={0.7}
+        className="flex-row items-center px-5 pt-4 pb-3 gap-2"
+      >
+        <View className="w-2 h-2 rounded-full bg-orange-400" />
+        <Text className="flex-1 text-xs font-semibold text-orange-500">{data.phase_label}</Text>
+        {totalCriteria > 0 && (
+          <Text className="text-xs text-gray-400 mr-1">{doneCriteria}/{totalCriteria}</Text>
+        )}
+        <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
+      </TouchableOpacity>
+
+      {/* Description — always visible */}
+      <Text className="text-sm text-gray-600 leading-relaxed px-5 pb-4">
         {PHASE_CONVERSATION[data.phase]}
       </Text>
 
-      {data.criteria.length > 0 && (
-        <>
-          <Text className="text-xs font-medium text-gray-400 mb-2">本阶段任务</Text>
-          <View className="gap-2 mb-4">
-            {data.criteria.map(c => (
-              <View key={c.key} className="flex-row items-center gap-2">
-                <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
-                  {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
-                </View>
-                <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
-                  {c.label}
-                </Text>
-                {c.target !== undefined && c.target > 1 && (
-                  <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
-                )}
+      {/* Criteria — only when expanded */}
+      {expanded && data.criteria.length > 0 && (
+        <View className="px-5 pb-4 border-t border-gray-50 pt-3 gap-2">
+          <Text className="text-xs font-medium text-gray-400 mb-1">本阶段任务</Text>
+          {data.criteria.map(c => (
+            <View key={c.key} className="flex-row items-center gap-2">
+              <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
+                {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
               </View>
-            ))}
-          </View>
-        </>
+              <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                {c.label}
+              </Text>
+              {c.target !== undefined && c.target > 1 && (
+                <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
+              )}
+            </View>
+          ))}
+        </View>
       )}
 
+      {/* CTA */}
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.85}
-        className="w-full py-3 bg-orange-500 rounded-xl items-center"
+        className="mx-5 mb-4 py-3 bg-orange-500 rounded-xl items-center"
       >
         <Text className="text-white text-sm font-semibold">
           {isOngoing ? '和小暖聊聊 →' : '开始本阶段对话 →'}
@@ -284,9 +295,9 @@ export default function HomeScreen() {
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {});
-  }, [userId]);
+  }, [userId]));
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
