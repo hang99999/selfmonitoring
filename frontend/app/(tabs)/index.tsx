@@ -87,7 +87,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
             <TouchableOpacity
               onPress={() => {
                 setShowLibrary(v => !v);
-                if (!showLibrary) api.getActivities().then(setLibraryActivities).catch(() => {});
+                if (!showLibrary) api.getActivities(userId).then(setLibraryActivities).catch(() => {});
               }}
             >
               <Text className="text-xs text-indigo-500 mb-3">

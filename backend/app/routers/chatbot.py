@@ -40,27 +40,23 @@ def _is_crisis(text: str) -> bool:
 # ── Trigger priority order ────────────────────────────────────────────────────
 
 TRIGGER_PRIORITY = [
-    "first_conversation",
     "monitoring_troubleshoot",
     "values_quality_guidance",
     "difficulty_adjustment_down",
     "busy_but_depressed",
     "desynchrony_explanation",
     "life_area_balance",
-    "contract_introduction",
     "values_review",
     "difficulty_adjustment_up",
     "maintenance_planning",
 ]
 
 TRIGGER_COOLDOWNS = {
-    "first_conversation": 0,
     "monitoring_troubleshoot": 7,
     "values_quality_guidance": 7,
     "busy_but_depressed": 14,
     "desynchrony_explanation": 14,
     "life_area_balance": 14,
-    "contract_introduction": 14,
     "values_review": 21,
     "difficulty_adjustment_up": 14,
     "difficulty_adjustment_down": 7,
@@ -236,6 +232,17 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     all_activities = db.query(Activity).filter(Activity.user_id == user_id).all()
     all_values = db.query(Value).filter(Value.user_id == user_id).all()
 
+    # Detect activity quality issues (heuristic: all ranked activities are high difficulty)
+    if all_activities:
+        ranked = [a for a in all_activities if a.difficulty_rank is not None]
+        if ranked and all(a.difficulty_rank >= 3 for a in ranked):
+            activities_quality_issue = "all_hard"
+        else:
+            activities_quality_issue = None
+    else:
+        activities_quality_issue = None
+    values_quality_issue = None  # requires LLM analysis; left for future implementation
+
     domain_id_to_name = {d.id: d.name for d in all_domains}
     domain_with_activity: set = set()
     domain_act_counts: Counter = Counter()
@@ -320,9 +327,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
 
     active_triggers = []
 
-    if is_first_conversation:
-        active_triggers.append("first_conversation")
-
     if (days_since_registration > 2 and consecutive_days_no_record >= 3
             and _cooldown_ok("monitoring_troubleshoot")):
         active_triggers.append("monitoring_troubleshoot")
@@ -341,9 +345,9 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         if dominant_ratio > 0.70 or len(life_areas_without) >= 2:
             active_triggers.append("life_area_balance")
 
-    if (total_incomplete_14d >= 3 or len(repeatedly_incomplete) > 0) \
-            and _cooldown_ok("contract_introduction"):
-        active_triggers.append("contract_introduction")
+    if (activities_quality_issue is not None or values_quality_issue is not None) \
+            and _cooldown_ok("values_quality_guidance"):
+        active_triggers.append("values_quality_guidance")
 
     if days_since_registration >= 28 and _cooldown_ok("values_review"):
         active_triggers.append("values_review")
@@ -391,8 +395,8 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         "total_incomplete_two_weeks": total_incomplete_14d,
         "has_values": has_values,
         "has_activities": has_activities,
-        "values_quality_issue": None,
-        "activities_quality_issue": None,
+        "values_quality_issue": values_quality_issue,
+        "activities_quality_issue": activities_quality_issue,
         "life_areas_with_activities": life_areas_with,
         "life_areas_without_activities": life_areas_without,
         "dominant_life_area_ratio": dominant_ratio,
@@ -643,11 +647,21 @@ async def chat(
     state["review_cycle_count"] = progress.review_cycle_count
     state["treatment_phase_days"] = (datetime.now() - progress.phase_unlocked_at).days
 
-    # Suppress trigger system during linear phases — module takes priority
-    # (keep monitoring_troubleshoot always active; suppress the rest)
-    if progress.phase in ("intro", "setup", "first_review"):
-        always_on = {"first_conversation", "monitoring_troubleshoot"}
+    # Suppress trigger system during linear phases — treatment module takes priority.
+    # Each phase allows only the triggers that are clinically relevant at that point.
+    if progress.phase == "intro":
+        # intro phase handles BA introduction itself; only allow monitoring check
+        always_on = {"monitoring_troubleshoot"}
         state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
+    elif progress.phase == "setup":
+        # setup is when users fill in values/activities; allow quality guidance
+        always_on = {"monitoring_troubleshoot", "values_quality_guidance"}
+        state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
+    elif progress.phase == "first_review":
+        # first_review handles social contract itself; only allow monitoring check
+        always_on = {"monitoring_troubleshoot"}
+        state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
+    # review_cycle: no suppression — all triggers operate normally
 
     system = chatbot_system_prompt(state, companion_name, db=db)
 
@@ -655,11 +669,8 @@ async def chat(
     reply = await call_llm_chat(system, llm_messages)
 
     # Record triggers
-    if state["is_first_conversation"]:
-        _record_trigger(db, req.user_id, "first_conversation")
     for trigger in state.get("active_triggers", []):
-        if trigger != "first_conversation":
-            _record_trigger(db, req.user_id, trigger)
+        _record_trigger(db, req.user_id, trigger)
 
     # Strip hidden [ACT:...] tag
     reply, detected = _extract_activity_tag(reply)
