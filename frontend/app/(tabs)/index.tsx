@@ -196,7 +196,7 @@ const PHASE_CONVERSATION: Record<string, string> = {
 };
 
 function PhaseCard({ data, onPress }: { data: TreatmentProgressData; onPress: () => void }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const isOngoing = data.phase === 'review_cycle';
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const totalCriteria = data.criteria.length;
@@ -353,16 +353,8 @@ export default function HomeScreen() {
           <XiaoNuan size={120} />
         </TouchableOpacity>
 
-        {/* Phase card */}
-        {treatmentProgress && (
-          <PhaseCard
-            data={treatmentProgress}
-            onPress={() => router.push('/chatbot')}
-          />
-        )}
-
         {/* Action buttons */}
-        <View className="flex-row justify-center gap-16 mb-10">
+        <View className="flex-row justify-center gap-16 mb-8">
           <View className="items-center">
             <TouchableOpacity
               onPress={() => setRecordVisible(true)}
@@ -382,6 +374,14 @@ export default function HomeScreen() {
             <Text className="text-xs text-gray-500 mt-2">计划活动</Text>
           </View>
         </View>
+
+        {/* Phase card */}
+        {treatmentProgress && (
+          <PhaseCard
+            data={treatmentProgress}
+            onPress={() => router.push('/chatbot')}
+          />
+        )}
       </ScrollView>
 
       <RecordModal
