@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  Modal, TextInput, Pressable, ActivityIndicator, Alert,
+  Modal, TextInput, Pressable, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -9,7 +9,7 @@ import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { Activity } from '../../src/types';
+import type { Activity, TreatmentProgressData } from '../../src/types';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -186,6 +186,65 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
   );
 }
 
+// ── Phase card ────────────────────────────────────────────────────────────────
+
+const PHASE_CONVERSATION: Record<string, string> = {
+  intro:        '了解行为激活的原理，开始观察自己的活动与情绪',
+  setup:        '探索对你真正重要的事，建立有意义的活动库',
+  first_review: '回顾上周执行情况，一起找出障碍和解决方法',
+  review_cycle: '每周：回顾进度 → 调整计划 → 安排新的一周',
+};
+
+function PhaseCard({ data, onPress }: { data: TreatmentProgressData; onPress: () => void }) {
+  const isOngoing = data.phase === 'review_cycle';
+  return (
+    <View className="w-full bg-white rounded-2xl border border-orange-100 px-5 py-4 mb-6">
+      <View className="flex-row items-center gap-2 mb-3">
+        <View className="w-2 h-2 rounded-full bg-orange-400" />
+        <Text className="text-xs font-semibold text-orange-500">{data.phase_label}</Text>
+      </View>
+
+      <Text className="text-xs font-medium text-gray-400 mb-1">
+        {isOngoing ? '本周对话' : '本阶段对话'}
+      </Text>
+      <Text className="text-sm text-gray-700 leading-relaxed mb-4">
+        {PHASE_CONVERSATION[data.phase]}
+      </Text>
+
+      {data.criteria.length > 0 && (
+        <>
+          <Text className="text-xs font-medium text-gray-400 mb-2">本阶段任务</Text>
+          <View className="gap-2 mb-4">
+            {data.criteria.map(c => (
+              <View key={c.key} className="flex-row items-center gap-2">
+                <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
+                  {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
+                </View>
+                <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                  {c.label}
+                </Text>
+                {c.target !== undefined && c.target > 1 && (
+                  <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
+      <TouchableOpacity
+        onPress={onPress}
+        activeOpacity={0.85}
+        className="w-full py-3 bg-orange-500 rounded-xl items-center"
+      >
+        <Text className="text-white text-sm font-semibold">
+          {isOngoing ? '和小暖聊聊 →' : '开始本阶段对话 →'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ── Crisis modal ──────────────────────────────────────────────────────────────
 function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   return (
@@ -222,7 +281,12 @@ export default function HomeScreen() {
   const [planVisible, setPlanVisible] = useState(false);
   const [crisisVisible, setCrisisVisible] = useState(false);
   const [feedback, setFeedback] = useState(DEFAULT_MSG);
+  const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {});
+  }, [userId]);
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
@@ -273,11 +337,18 @@ export default function HomeScreen() {
         <TouchableOpacity
           onPress={() => router.push('/chatbot')}
           activeOpacity={0.8}
-          className="mt-2 mb-2"
+          className="mt-2 mb-5"
         >
           <XiaoNuan size={120} />
         </TouchableOpacity>
-        <Text className="text-xs text-gray-400 mb-8">点击和我聊聊</Text>
+
+        {/* Phase card */}
+        {treatmentProgress && (
+          <PhaseCard
+            data={treatmentProgress}
+            onPress={() => router.push('/chatbot')}
+          />
+        )}
 
         {/* Action buttons */}
         <View className="flex-row justify-center gap-16 mb-10">
