@@ -665,6 +665,11 @@ async def chat(
 
     system = chatbot_system_prompt(state, companion_name, db=db)
 
+    # yunwu.ai (and most OpenAI-compatible APIs) reject requests with zero user
+    # messages. Inject a sentinel when session-start trigger fires on empty history.
+    if not llm_messages:
+        llm_messages = [{"role": "user", "content": "请开始对话"}]
+
     # Call LLM
     reply = await call_llm_chat(system, llm_messages)
 
