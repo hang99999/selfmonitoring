@@ -603,7 +603,24 @@ def treatment_module_prompt(user_state: dict) -> str:
 **触发信号：** 本周触发信号（若有）在回顾后自然引入，不要在回顾前插入。"""
 
 
-def chatbot_system_prompt(user_state: dict, companion_name: str, db=None) -> str:
+SESSION_INTENT_DESCRIPTIONS = {
+    "phase:intro":          "Week 1 启动：讲解抑郁规律、引导用户开始记录活动",
+    "phase:setup":          "Week 2 建库：引导完成价值观 × 活动 × 第一个计划三步",
+    "phase:first_review":   "Week 3 首次回顾：回顾计划完成情况、处理障碍、介绍社会支持合同",
+    "phase:review_cycle":   "本周回顾：回顾上周计划、处理未完成障碍、安排下周计划",
+    "trigger:monitoring_troubleshoot":    "了解用户为什么最近没有记录活动，帮助排除阻碍",
+    "trigger:values_quality_guidance":    "引导用户改善价值观表述或活动设计的质量",
+    "trigger:busy_but_depressed":         "帮用户认识到忙≠有意义，引导加入享受性活动",
+    "trigger:desynchrony_explanation":    "解释情绪和行为的去同步现象，防止用户因短期没改善而放弃",
+    "trigger:life_area_balance":          "引导用户关注被忽视的生活领域，让活动分布更均衡",
+    "trigger:values_review":              "引导用户重新审视价值观与当前活动的匹配度",
+    "trigger:difficulty_adjustment_up":   "鼓励用户尝试更有挑战性的活动",
+    "trigger:difficulty_adjustment_down": "帮用户把活动难度调整到更容易完成的程度",
+    "trigger:maintenance_planning":       "帮用户建立长期维持策略，应对未来的低落期",
+}
+
+
+def chatbot_system_prompt(user_state: dict, companion_name: str, db=None, session_intent: str | None = None) -> str:
     """Build full chatbot system prompt with injected user state data."""
     import json
 
@@ -666,5 +683,17 @@ def chatbot_system_prompt(user_state: dict, companion_name: str, db=None) -> str
 
     treatment_ctx = treatment_module_prompt(user_state)
 
+    intent_ctx = ""
+    if session_intent and session_intent in SESSION_INTENT_DESCRIPTIONS:
+        intent_ctx = f"""
+
+---
+
+## 本次对话主议程
+
+**{SESSION_INTENT_DESCRIPTIONS[session_intent]}**
+
+专注完成这一个议程。完成后可以自由聊天，但不要在议程完成前引入其他治疗任务。"""
+
     base = get_prompt("chatbot", CHATBOT_SYSTEM_PROMPT, db)
-    return base + global_ctx + session_ctx + treatment_ctx
+    return base + intent_ctx + global_ctx + session_ctx + treatment_ctx

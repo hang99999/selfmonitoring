@@ -479,6 +479,7 @@ class ChatRequest(BaseModel):
     user_id: str = "default_user"
     session_id: int
     message: str   # empty string = session-start trigger (no user message saved)
+    session_intent: str | None = None  # e.g. "phase:intro" or "trigger:life_area_balance"
 
 
 class CompanionNameRequest(BaseModel):
@@ -671,7 +672,7 @@ async def chat(
     if req.user_id in _debug_triggers:
         state["active_triggers"] = [_debug_triggers.pop(req.user_id)]
 
-    system = chatbot_system_prompt(state, companion_name, db=db)
+    system = chatbot_system_prompt(state, companion_name, db=db, session_intent=req.session_intent)
 
     # yunwu.ai (and most OpenAI-compatible APIs) reject requests with zero user
     # messages. Inject a sentinel when session-start trigger fires on empty history.
@@ -773,6 +774,14 @@ async def get_treatment_progress(
     if user_id in _debug_triggers:
         active_trigger = _debug_triggers[user_id]
 
+    # Triggers fired in the last 24 hours (show as "recently completed")
+    cutoff = datetime.now() - timedelta(hours=24)
+    recent_logs = db.query(TriggerLog).filter(
+        TriggerLog.user_id == user_id,
+        TriggerLog.last_executed >= cutoff,
+    ).all()
+    recently_triggered = [t.trigger_type for t in recent_logs]
+
     return {
         "phase": phase,
         "phase_label": PHASE_LABELS.get(phase, phase),
@@ -783,6 +792,7 @@ async def get_treatment_progress(
         "criteria_met": criteria_met,
         "can_advance": can_advance,
         "active_trigger": active_trigger,
+        "recently_triggered": recently_triggered,
     }
 
 

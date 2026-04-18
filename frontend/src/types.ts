@@ -142,6 +142,7 @@ export interface TreatmentProgressData {
   criteria_met: boolean;
   can_advance: boolean;
   active_trigger?: string | null;
+  recently_triggered?: string[];
 }
 
 export interface UserState {

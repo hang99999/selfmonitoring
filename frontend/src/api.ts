@@ -205,10 +205,10 @@ export const api = {
       `/api/chatbot/session/${sessionId}/messages?user_id=${userId}`,
     ),
 
-  sendChatMessage: (sessionId: number, message: string, userId = 'default_user') =>
+  sendChatMessage: (sessionId: number, message: string, userId = 'default_user', sessionIntent?: string) =>
     request<ChatResponse>('/api/chatbot/chat', {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId, session_id: sessionId, message }),
+      body: JSON.stringify({ user_id: userId, session_id: sessionId, message, session_intent: sessionIntent ?? null }),
     }),
 
   getTreatmentProgress: (userId = 'default_user') =>

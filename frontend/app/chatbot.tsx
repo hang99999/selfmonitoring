@@ -215,6 +215,22 @@ const PHASE_ROADMAP = [
 
 const PHASE_ORDER = ['intro', 'setup', 'first_review', 'review_cycle'] as const;
 
+const INTENT_LABELS: Record<string, string> = {
+  'phase:intro':                        'Week 1 · 启动监测',
+  'phase:setup':                        'Week 2 · 价值观 × 活动 × 计划',
+  'phase:first_review':                 'Week 3 · 首次回顾',
+  'phase:review_cycle':                 '本周回顾',
+  'trigger:monitoring_troubleshoot':    '监测疏通',
+  'trigger:values_quality_guidance':    '价值观质量引导',
+  'trigger:busy_but_depressed':         '忙但抑郁',
+  'trigger:desynchrony_explanation':    '去异步解释',
+  'trigger:life_area_balance':          '生活领域平衡',
+  'trigger:values_review':              '价值观复习',
+  'trigger:difficulty_adjustment_up':   '难度提升',
+  'trigger:difficulty_adjustment_down': '难度降低',
+  'trigger:maintenance_planning':       '维持规划',
+};
+
 const TRIGGER_PREVIEWS: Record<string, string> = {
   monitoring_troubleshoot:  '好几天没看到你的记录了，发生什么了吗？',
   values_quality_guidance:  '我看了一下你的活动和价值观，想和你聊聊是不是更合适一些',
@@ -228,8 +244,8 @@ const TRIGGER_PREVIEWS: Record<string, string> = {
 };
 
 function TreatmentProgressCard({
-  data, userId, onPhaseChanged,
-}: { data: TreatmentProgressData; userId: string; onPhaseChanged: () => void }) {
+  data, userId, onPhaseChanged, onStartIntent,
+}: { data: TreatmentProgressData; userId: string; onPhaseChanged: () => void; onStartIntent: (intent: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showDev, setShowDev] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -285,12 +301,23 @@ function TreatmentProgressCard({
         <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
       </TouchableOpacity>
 
-      {/* Trigger preview — shown when collapsed and trigger is active */}
+      {/* Trigger preview — shown when collapsed */}
       {!expanded && data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
-        <View className="px-4 pb-2.5 flex-row items-start gap-2">
+        <View className="px-4 pb-2.5 flex-row items-center gap-2">
           <Text className="text-xs text-blue-500 flex-1">
             小暖：{TRIGGER_PREVIEWS[data.active_trigger]}
           </Text>
+          <TouchableOpacity
+            onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
+            className="px-3 py-1 bg-blue-500 rounded-lg"
+          >
+            <Text className="text-xs text-white font-medium">开始聊</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {!expanded && !data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
+        <View className="px-4 pb-2.5">
+          <Text className="text-xs text-gray-400">✓ 今日话题已完成</Text>
         </View>
       )}
 
@@ -457,11 +484,32 @@ function TreatmentProgressCard({
             );
           })}
 
-          {/* Active trigger preview at bottom of expanded roadmap */}
+          {/* Phase task button */}
+          <TouchableOpacity
+            onPress={() => onStartIntent(`phase:${data.phase}`)}
+            className="mx-4 mt-1 mb-1 px-3 py-2.5 bg-orange-50 rounded-xl border border-orange-100 flex-row items-center justify-between"
+          >
+            <Text className="text-xs text-orange-600 font-medium">和小暖聊本周任务</Text>
+            <Text className="text-orange-400 text-xs">→</Text>
+          </TouchableOpacity>
+
+          {/* Active trigger card */}
           {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
             <View className="mx-4 mt-1 mb-1 px-3 py-2.5 bg-blue-50 rounded-xl border border-blue-100">
-              <Text className="text-[10px] text-blue-400 font-medium mb-0.5">小暖想和你聊聊</Text>
-              <Text className="text-xs text-blue-600">{TRIGGER_PREVIEWS[data.active_trigger]}</Text>
+              <Text className="text-[10px] text-blue-400 font-medium mb-1">小暖想和你聊聊</Text>
+              <Text className="text-xs text-blue-600 mb-2">{TRIGGER_PREVIEWS[data.active_trigger]}</Text>
+              <TouchableOpacity
+                onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
+                className="self-start px-3 py-1 bg-blue-500 rounded-lg"
+              >
+                <Text className="text-xs text-white font-medium">开始聊</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {/* Recently triggered (completed today) */}
+          {!data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
+            <View className="mx-4 mt-1 mb-1 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
+              <Text className="text-xs text-gray-400">✓ 今日话题已完成</Text>
             </View>
           )}
         </View>
@@ -582,6 +630,7 @@ export default function ChatbotScreen() {
   const [userState, setUserState] = useState<UserState | null>(null);
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
+  const [currentIntent, setCurrentIntent] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -705,11 +754,38 @@ export default function ChatbotScreen() {
     }
   };
 
+  // ── Start intent conversation ────────────────────────────────────────────────
+  const handleStartIntent = async (intent: string) => {
+    try {
+      const session = await api.createChatSession(userId);
+      setCurrentSessionId(session.id);
+      setCurrentIntent(intent);
+      setMessages([]);
+      setDetectedActivity(null);
+      const progress = await api.getTreatmentProgress(userId).catch(() => null);
+      setTreatmentProgress(progress);
+      setLoading(true);
+      try {
+        const res = await api.sendChatMessage(session.id, '', userId, intent);
+        if (res.is_crisis) setShowCrisis(true);
+        setMessages([{ role: 'assistant', content: res.reply }]);
+        if (res.detected_activity) setDetectedActivity(res.detected_activity);
+      } catch {
+        setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+      } finally {
+        setLoading(false);
+      }
+    } catch {
+      Alert.alert('提示', '无法创建新对话，请重试');
+    }
+  };
+
   // ── New conversation ────────────────────────────────────────────────────────
   const handleNewConversation = async () => {
     try {
       const session = await api.createChatSession(userId);
       setCurrentSessionId(session.id);
+      setCurrentIntent(null);
       setMessages([]);
       setDetectedActivity(null);
 
@@ -751,7 +827,13 @@ export default function ChatbotScreen() {
         <XiaoNuan size={36} />
         <View className="flex-1">
           <Text className="font-semibold text-gray-800 text-sm">{companionName}</Text>
-          <Text className="text-xs text-gray-400">行为激活伙伴</Text>
+          {currentIntent ? (
+            <Text className="text-xs text-blue-400" numberOfLines={1}>
+              {INTENT_LABELS[currentIntent] ?? currentIntent}
+            </Text>
+          ) : (
+            <Text className="text-xs text-gray-400">行为激活伙伴</Text>
+          )}
         </View>
         {/* History button */}
         <TouchableOpacity
@@ -777,6 +859,7 @@ export default function ChatbotScreen() {
           onPhaseChanged={() =>
             api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})
           }
+          onStartIntent={handleStartIntent}
         />
       )}
 
