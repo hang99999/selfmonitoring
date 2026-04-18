@@ -187,6 +187,29 @@ class TreatmentProgress(Base):
     updated_at = Column(DateTime, default=localnow)
 
 
+class Supporter(Base):
+    """社会支持者——用户的支持网络成员"""
+    __tablename__ = "supporters"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    name = Column(String, nullable=False)
+    relationship = Column(String, nullable=True)   # 伴侣、死党、妈妈等
+    notes = Column(String, nullable=True)          # 擅长帮助的方式（可选）
+    created_at = Column(DateTime, default=localnow)
+
+
+class PlannedActivitySupporter(Base):
+    """计划活动与支持者的关联"""
+    __tablename__ = "planned_activity_supporters"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    planned_activity_id = Column(String, ForeignKey("planned_activities.id"), nullable=False)
+    supporter_id = Column(String, ForeignKey("supporters.id"), nullable=False)
+    help_description = Column(String, nullable=True)  # 针对这个活动的具体协助方式
+    created_at = Column(DateTime, default=localnow)
+
+
 class SystemPrompt(Base):
     """LLM prompt 模板 — 可在 pgAdmin 中直接编辑 content 字段来调整模型行为"""
     __tablename__ = "system_prompts"

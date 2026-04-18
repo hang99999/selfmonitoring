@@ -233,6 +233,51 @@ class DomainRadarItem(BaseModel):
     count: int
 
 
+# --- Supporter Schemas ---
+
+class SupporterCreate(BaseModel):
+    name: str
+    relationship: Optional[str] = None
+    notes: Optional[str] = None
+    user_id: str = "default_user"
+
+
+class SupporterUpdate(BaseModel):
+    name: Optional[str] = None
+    relationship: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SupporterResponse(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    relationship: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class PlannedActivitySupporterCreate(BaseModel):
+    supporter_id: str
+    help_description: Optional[str] = None
+
+
+class PlannedActivitySupporterResponse(BaseModel):
+    id: str
+    planned_activity_id: str
+    supporter_id: str
+    help_description: Optional[str] = None
+    created_at: datetime
+    supporter_name: Optional[str] = None
+    supporter_relationship: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 # --- Auth Schemas ---
 
 class UnlockRequest(BaseModel):

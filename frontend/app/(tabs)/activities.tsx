@@ -4,9 +4,10 @@ import {
   Modal, Pressable, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { LifeDomain, Value, Activity } from '../../src/types';
+import type { LifeDomain, Value, Activity, Supporter } from '../../src/types';
 
 // ── Add Value Modal ───────────────────────────────────────────────────────────
 function AddValueModal({
@@ -78,10 +79,12 @@ function AddActivityModal({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ActivitiesScreen() {
+  const router = useRouter();
   const userId = useUserId();
   const [domains, setDomains] = useState<LifeDomain[]>([]);
   const [values, setValues] = useState<Value[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [supporters, setSupporters] = useState<Supporter[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [addValueFor, setAddValueFor] = useState<string | null>(null);
   const [addActivityFor, setAddActivityFor] = useState<{ domainId: string; valueId: string } | null>(null);
@@ -89,8 +92,11 @@ export default function ActivitiesScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [d, v, a] = await Promise.all([api.getDomains(userId), api.getValues(userId), api.getActivities(userId)]);
-      setDomains(d); setValues(v); setActivities(a);
+      const [d, v, a, s] = await Promise.all([
+        api.getDomains(userId), api.getValues(userId),
+        api.getActivities(userId), api.getSupporters(userId),
+      ]);
+      setDomains(d); setValues(v); setActivities(a); setSupporters(s);
     } finally { setLoading(false); }
   }, []);
 
@@ -177,6 +183,29 @@ export default function ActivitiesScreen() {
             </View>
           );
         })}
+        {/* Supporters card */}
+        <TouchableOpacity
+          onPress={() => router.push('/supporters')}
+          className="bg-white rounded-2xl px-4 py-4 mt-2 mb-3 shadow-sm"
+        >
+          <View className="flex-row items-center justify-between mb-1">
+            <Text className="font-semibold text-gray-800">我的支持者</Text>
+            <Text className="text-gray-400 text-sm">管理 ›</Text>
+          </View>
+          {supporters.length === 0 ? (
+            <Text className="text-xs text-gray-400">添加家人或朋友，在规划活动时邀请他们支持你</Text>
+          ) : (
+            <View className="flex-row flex-wrap gap-2 mt-1">
+              {supporters.map(s => (
+                <View key={s.id} className="bg-orange-50 border border-orange-200 px-3 py-1 rounded-full flex-row items-center gap-1">
+                  <Text className="text-xs text-orange-700 font-medium">{s.name}</Text>
+                  {s.relationship && <Text className="text-xs text-orange-400">{s.relationship}</Text>}
+                </View>
+              ))}
+            </View>
+          )}
+        </TouchableOpacity>
+
         <View className="h-8" />
       </ScrollView>
 

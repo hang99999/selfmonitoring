@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { MoodRecord, PlannedActivity } from '../../src/types';
+import type { MoodRecord, PlannedActivity, PlannedActivitySupporter } from '../../src/types';
 import RecordModal from '../../components/RecordModal';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -238,6 +238,7 @@ export default function TimelineScreen() {
   const [completeFor, setCompleteFor] = useState<PlannedActivity | null>(null);
   const [incompleteFor, setIncompleteFor] = useState<PlannedActivity | null>(null);
   const [recordFor, setRecordFor] = useState<PlannedActivity | null>(null);
+  const [supportersByActivity, setSupportersByActivity] = useState<Record<string, PlannedActivitySupporter[]>>({});
 
   const dateStr = toDateStr(selectedDate);
   const todayStr = toDateStr(new Date());
@@ -256,6 +257,16 @@ export default function TimelineScreen() {
       ]);
       setRecords(recs);
       setPlanned(plans);
+      if (plans.length > 0) {
+        const assocResults = await Promise.all(
+          plans.map(p => api.getActivitySupporters(p.id).catch(() => []))
+        );
+        const map: Record<string, PlannedActivitySupporter[]> = {};
+        plans.forEach((p, i) => { map[p.id] = assocResults[i]; });
+        setSupportersByActivity(map);
+      } else {
+        setSupportersByActivity({});
+      }
     } catch {
       setRecords([]); setPlanned([]);
     } finally {
@@ -373,7 +384,7 @@ export default function TimelineScreen() {
             <View className="mb-4 mt-3">
               <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">全天计划</Text>
               {allDayPlanned.map(p => (
-                <PlannedCard key={p.id} item={p} isEditable={isEditable} onTap={() => handlePlannedTap(p)} onDelete={() => handleDelete(p)} />
+                <PlannedCard key={p.id} item={p} isEditable={isEditable} supporters={supportersByActivity[p.id] ?? []} onTap={() => handlePlannedTap(p)} onDelete={() => handleDelete(p)} />
               ))}
             </View>
           )}
@@ -412,7 +423,7 @@ export default function TimelineScreen() {
                       </View>
                     ))}
                     {plans.map(p => (
-                      <PlannedCard key={p.id} item={p} isEditable={isEditable} onTap={() => handlePlannedTap(p)} onDelete={() => handleDelete(p)} />
+                      <PlannedCard key={p.id} item={p} isEditable={isEditable} supporters={supportersByActivity[p.id] ?? []} onTap={() => handlePlannedTap(p)} onDelete={() => handleDelete(p)} />
                     ))}
                   </View>
                 </View>
@@ -460,8 +471,9 @@ export default function TimelineScreen() {
 
 // ── planned card ──────────────────────────────────────────────────────────────
 
-function PlannedCard({ item, isEditable, onTap, onDelete }: {
+function PlannedCard({ item, isEditable, supporters, onTap, onDelete }: {
   item: PlannedActivity; isEditable: boolean;
+  supporters: PlannedActivitySupporter[];
   onTap: () => void; onDelete: () => void;
 }) {
   const isPastDue = !item.completed && !isEditable;
@@ -493,6 +505,15 @@ function PlannedCard({ item, isEditable, onTap, onDelete }: {
           )}
         </View>
       </View>
+      {supporters.length > 0 && (
+        <View className="flex-row flex-wrap gap-1 mt-1.5">
+          {supporters.map(s => (
+            <View key={s.id} className="bg-orange-100 px-2 py-0.5 rounded-full">
+              <Text className="text-xs text-orange-600">{s.supporter_name ?? '支持者'}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </TouchableOpacity>
   );
 }

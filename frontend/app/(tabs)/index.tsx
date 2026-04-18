@@ -9,7 +9,7 @@ import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { Activity, TreatmentProgressData } from '../../src/types';
+import type { Activity, TreatmentProgressData, Supporter } from '../../src/types';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -38,6 +38,22 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
   const [done, setDone] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [libraryActivities, setLibraryActivities] = useState<Activity[]>([]);
+  const [supporters, setSupporters] = useState<Supporter[]>([]);
+  const [selectedSupporterIds, setSelectedSupporterIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (visible) {
+      api.getSupporters(userId).then(setSupporters).catch(() => {});
+    }
+  }, [visible, userId]);
+
+  const toggleSupporter = (id: string) => {
+    setSelectedSupporterIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); } else if (next.size < 3) { next.add(id); }
+      return next;
+    });
+  };
 
   const dateOptions = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + i);
@@ -50,14 +66,21 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await api.createPlanned({
+      const planned = await api.createPlanned({
         activity_name: name.trim(),
         scheduled_date: selectedDate,
         scheduled_time: allDay ? undefined : `${String(selectedHour).padStart(2, '0')}:00`,
         user_id: userId,
       });
+      await Promise.all(
+        [...selectedSupporterIds].map(sid => api.addActivitySupporter(planned.id, sid))
+      );
       setDone(true);
-      setTimeout(() => { setDone(false); setName(''); setAllDay(true); setSelectedHour(9); onClose(); }, 1600);
+      setTimeout(() => {
+        setDone(false); setName(''); setAllDay(true); setSelectedHour(9);
+        setSelectedSupporterIds(new Set());
+        onClose();
+      }, 1600);
     } finally {
       setSubmitting(false);
     }
@@ -66,7 +89,12 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <Pressable className="flex-1" onPress={onClose} />
-      <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
+      <ScrollView
+        className="bg-white rounded-t-3xl"
+        bounces={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40 }}
+      >
         {done ? (
           <View className="items-center py-10">
             <Text className="text-5xl mb-3">📅</Text>
@@ -169,6 +197,33 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
             )}
             {allDay && <View className="mb-5" />}
 
+            {supporters.length > 0 && (
+              <>
+                <Text className="text-sm font-medium text-gray-600 mb-1">寻求支持（可选）</Text>
+                <Text className="text-xs text-gray-400 mb-2">选择可以帮助你完成这项活动的人，最多3位</Text>
+                <View className="flex-row flex-wrap gap-2 mb-5">
+                  {supporters.map(s => {
+                    const selected = selectedSupporterIds.has(s.id);
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        onPress={() => toggleSupporter(s.id)}
+                        className="px-3 py-1.5 rounded-full border"
+                        style={{
+                          backgroundColor: selected ? '#f97316' : '#fff',
+                          borderColor: selected ? '#f97316' : '#e5e7eb',
+                        }}
+                      >
+                        <Text style={{ color: selected ? '#fff' : '#6b7280' }} className="text-sm">
+                          {s.name}{s.relationship ? ` · ${s.relationship}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
             <TouchableOpacity
               onPress={handleSubmit}
               disabled={!name.trim() || submitting}
@@ -181,7 +236,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
             </TouchableOpacity>
           </>
         )}
-      </View>
+      </ScrollView>
     </Modal>
   );
 }

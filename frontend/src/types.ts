@@ -16,6 +16,25 @@ export interface MoodRecord {
   confirmed: boolean;
 }
 
+export interface Supporter {
+  id: string;
+  user_id: string;
+  name: string;
+  relationship?: string;
+  notes?: string;
+  created_at: string;
+}
+
+export interface PlannedActivitySupporter {
+  id: string;
+  planned_activity_id: string;
+  supporter_id: string;
+  help_description?: string;
+  created_at: string;
+  supporter_name?: string;
+  supporter_relationship?: string;
+}
+
 export interface DomainRadarItem {
   domain_id: string | null;  // null = "其他"
   domain_name: string;

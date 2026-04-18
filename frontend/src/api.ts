@@ -2,7 +2,7 @@ import type {
   MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
-  TreatmentProgressData,
+  TreatmentProgressData, Supporter, PlannedActivitySupporter,
 } from './types';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
@@ -224,6 +224,39 @@ export const api = {
     request<{ ok: boolean; companion_name: string }>('/api/chatbot/companion-name', {
       method: 'PUT',
       body: JSON.stringify({ user_id: userId, companion_name: name }),
+    }),
+
+  // --- Supporters ---
+  getSupporters: (userId = 'default_user') =>
+    request<Supporter[]>(`/api/supporters?user_id=${userId}`),
+
+  createSupporter: (data: { name: string; relationship?: string; notes?: string }, userId = 'default_user') =>
+    request<Supporter>('/api/supporters', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId, ...data }),
+    }),
+
+  updateSupporter: (id: string, data: { name?: string; relationship?: string; notes?: string }) =>
+    request<Supporter>(`/api/supporters/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteSupporter: (id: string) =>
+    request<{ ok: boolean }>(`/api/supporters/${id}`, { method: 'DELETE' }),
+
+  getActivitySupporters: (plannedActivityId: string) =>
+    request<PlannedActivitySupporter[]>(`/api/supporters/planned/${plannedActivityId}`),
+
+  addActivitySupporter: (plannedActivityId: string, supporterId: string, helpDescription?: string) =>
+    request<PlannedActivitySupporter>(`/api/supporters/planned/${plannedActivityId}`, {
+      method: 'POST',
+      body: JSON.stringify({ supporter_id: supporterId, help_description: helpDescription }),
+    }),
+
+  removeActivitySupporter: (plannedActivityId: string, supporterId: string) =>
+    request<{ ok: boolean }>(`/api/supporters/planned/${plannedActivityId}/${supporterId}`, {
+      method: 'DELETE',
     }),
 
   // --- Auth ---
