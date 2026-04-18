@@ -220,6 +220,12 @@ export const api = {
       body: JSON.stringify({ user_id: userId, phase, phase_days: phaseDays, review_cycle_count: reviewCycleCount }),
     }),
 
+  debugSetTrigger: (userId: string, trigger: string | null) =>
+    request<{ ok: boolean; pending_trigger: string | null }>('/api/chatbot/treatment/debug-trigger', {
+      method: 'PUT',
+      body: JSON.stringify({ user_id: userId, trigger }),
+    }),
+
   setCompanionName: (name: string, userId = 'default_user') =>
     request<{ ok: boolean; companion_name: string }>('/api/chatbot/companion-name', {
       method: 'PUT',

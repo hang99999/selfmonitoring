@@ -215,12 +215,25 @@ const PHASE_ROADMAP = [
 
 const PHASE_ORDER = ['intro', 'setup', 'first_review', 'review_cycle'] as const;
 
+const TRIGGER_PREVIEWS: Record<string, string> = {
+  monitoring_troubleshoot:  '好几天没看到你的记录了，发生什么了吗？',
+  values_quality_guidance:  '我看了一下你的活动和价值观，想和你聊聊是不是更合适一些',
+  busy_but_depressed:       '你最近做了好多事，但我感觉你的心情还没跟上——想聊聊吗？',
+  desynchrony_explanation:  '你一直在坚持做活动，情绪暂时还没变化是很正常的，我来解释一下',
+  life_area_balance:        '我注意到你的活动集中在某几个方面，其他领域想不想也试试？',
+  values_review:            '用了一段时间了，我们回顾一下当初定的价值观还合不合适？',
+  difficulty_adjustment_up: '你最近完成得很好！是时候挑战一下更难的活动了',
+  difficulty_adjustment_down: '最近完成率有点低，我们来看看活动是不是太难了',
+  maintenance_planning:     '你已经保持了一段时间的好状态，想聊聊怎么长期维持吗？',
+};
+
 function TreatmentProgressCard({
   data, userId, onPhaseChanged,
 }: { data: TreatmentProgressData; userId: string; onPhaseChanged: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showDev, setShowDev] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [pendingTrigger, setPendingTrigger] = useState<string | null>(null);
 
   const switchPhase = async (phase: string, cycleCount = 1) => {
     setSwitching(true);
@@ -231,6 +244,13 @@ function TreatmentProgressCard({
     } catch { /* ignore */ } finally {
       setSwitching(false);
     }
+  };
+
+  const setTrigger = async (trigger: string | null) => {
+    try {
+      await api.debugSetTrigger(userId, trigger);
+      setPendingTrigger(trigger);
+    } catch { /* ignore */ }
   };
 
   const currentIdx = PHASE_ORDER.indexOf(data.phase as typeof PHASE_ORDER[number]);
@@ -258,9 +278,21 @@ function TreatmentProgressCard({
       >
         <View className="w-2 h-2 rounded-full bg-orange-400" />
         <Text className="flex-1 text-xs font-medium text-gray-700">{data.phase_label}</Text>
+        {data.active_trigger && (
+          <View className="w-2 h-2 rounded-full bg-blue-400 mr-1" />
+        )}
         <Text className="text-xs text-gray-400 mr-1">{summaryText}</Text>
         <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
       </TouchableOpacity>
+
+      {/* Trigger preview — shown when collapsed and trigger is active */}
+      {!expanded && data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
+        <View className="px-4 pb-2.5 flex-row items-start gap-2">
+          <Text className="text-xs text-blue-500 flex-1">
+            小暖：{TRIGGER_PREVIEWS[data.active_trigger]}
+          </Text>
+        </View>
+      )}
 
       {/* Dev panel (long-press to reveal) */}
       {showDev && (
@@ -292,6 +324,40 @@ function TreatmentProgressCard({
             ))}
           </View>
           {switching && <Text className="text-[10px] text-gray-400">切换中…</Text>}
+
+          <Text className="text-[10px] text-gray-400 font-medium mt-2 mb-1">触发对话（下次发消息生效）</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {[
+              { label: '监测疏通',    trigger: 'monitoring_troubleshoot' },
+              { label: '价值观质量',  trigger: 'values_quality_guidance' },
+              { label: '忙但抑郁',    trigger: 'busy_but_depressed' },
+              { label: '去异步解释',  trigger: 'desynchrony_explanation' },
+              { label: '领域平衡',    trigger: 'life_area_balance' },
+              { label: '价值观复习',  trigger: 'values_review' },
+              { label: '难度提升',    trigger: 'difficulty_adjustment_up' },
+              { label: '难度降低',    trigger: 'difficulty_adjustment_down' },
+              { label: '维持规划',    trigger: 'maintenance_planning' },
+            ].map(({ label, trigger }) => (
+              <TouchableOpacity
+                key={trigger}
+                onPress={() => setTrigger(pendingTrigger === trigger ? null : trigger)}
+                className={`px-3 py-1.5 rounded-xl border ${
+                  pendingTrigger === trigger
+                    ? 'bg-blue-100 border-blue-300'
+                    : 'bg-white border-gray-200'
+                }`}
+              >
+                <Text className={`text-xs font-medium ${
+                  pendingTrigger === trigger ? 'text-blue-600' : 'text-gray-500'
+                }`}>
+                  {pendingTrigger === trigger ? `● ${label}` : label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {pendingTrigger && (
+            <Text className="text-[10px] text-blue-400">已设置：{pendingTrigger} · 发下一条消息时触发</Text>
+          )}
         </View>
       )}
 
@@ -390,6 +456,14 @@ function TreatmentProgressCard({
               </View>
             );
           })}
+
+          {/* Active trigger preview at bottom of expanded roadmap */}
+          {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
+            <View className="mx-4 mt-1 mb-1 px-3 py-2.5 bg-blue-50 rounded-xl border border-blue-100">
+              <Text className="text-[10px] text-blue-400 font-medium mb-0.5">小暖想和你聊聊</Text>
+              <Text className="text-xs text-blue-600">{TRIGGER_PREVIEWS[data.active_trigger]}</Text>
+            </View>
+          )}
         </View>
       )}
     </View>

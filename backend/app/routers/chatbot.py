@@ -23,6 +23,10 @@ from app.prompts import chatbot_system_prompt
 
 router = APIRouter(prefix="/api/chatbot", tags=["chatbot"])
 
+# ── Dev: debug trigger injection ──────────────────────────────────────────────
+# Maps user_id → trigger name. Consumed once on next /chat call.
+_debug_triggers: dict[str, str] = {}
+
 # ── Safety ───────────────────────────────────────────────────────────────────
 
 CRISIS_KEYWORDS = [
@@ -663,6 +667,10 @@ async def chat(
         state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
     # review_cycle: no suppression — all triggers operate normally
 
+    # Dev override: inject a manually-set trigger, bypassing conditions + phase filter
+    if req.user_id in _debug_triggers:
+        state["active_triggers"] = [_debug_triggers.pop(req.user_id)]
+
     system = chatbot_system_prompt(state, companion_name, db=db)
 
     # yunwu.ai (and most OpenAI-compatible APIs) reject requests with zero user
@@ -758,6 +766,13 @@ async def get_treatment_progress(
     criteria_met = all(c["done"] for c in criteria) if criteria else True
     can_advance = criteria_met and days_until_eligible == 0 and phase != "review_cycle"
 
+    # Compute active trigger for display (reuse state computation)
+    state = _compute_user_state(db, user_id)
+    active_trigger = state["active_triggers"][0] if state["active_triggers"] else None
+    # Also surface any dev-injected trigger
+    if user_id in _debug_triggers:
+        active_trigger = _debug_triggers[user_id]
+
     return {
         "phase": phase,
         "phase_label": PHASE_LABELS.get(phase, phase),
@@ -767,6 +782,7 @@ async def get_treatment_progress(
         "criteria": criteria,
         "criteria_met": criteria_met,
         "can_advance": can_advance,
+        "active_trigger": active_trigger,
     }
 
 
@@ -775,6 +791,24 @@ class TreatmentDebugRequest(BaseModel):
     phase: str                    # intro | setup | first_review | review_cycle
     phase_days: int = 7           # 模拟已在该阶段过了多少天（>=7 可触发解锁检查）
     review_cycle_count: int = 1   # review_cycle 阶段用
+
+
+class TriggerDebugRequest(BaseModel):
+    user_id: str = "default_user"
+    trigger: str | None = None    # None = clear pending trigger
+
+
+@router.put("/treatment/debug-trigger")
+async def debug_set_trigger(req: TriggerDebugRequest):
+    """[开发用] 注入一个触发对话，下次发送消息时生效（忽略条件和冷却期）。trigger=null 清除。"""
+    valid = set(TRIGGER_PRIORITY)
+    if req.trigger is not None and req.trigger not in valid:
+        return {"ok": False, "error": f"trigger must be one of {valid}"}
+    if req.trigger is None:
+        _debug_triggers.pop(req.user_id, None)
+    else:
+        _debug_triggers[req.user_id] = req.trigger
+    return {"ok": True, "pending_trigger": req.trigger}
 
 
 @router.put("/treatment/debug")
