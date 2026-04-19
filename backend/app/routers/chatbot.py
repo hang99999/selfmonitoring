@@ -686,6 +686,10 @@ async def chat(
     for trigger in state.get("active_triggers", []):
         _record_trigger(db, req.user_id, trigger)
 
+    # Record phase session start
+    if req.session_intent and req.session_intent.startswith("phase:"):
+        _record_trigger(db, req.user_id, f"phase_session:{progress.phase}")
+
     # Strip hidden [ACT:...] tag
     reply, detected = _extract_activity_tag(reply)
 
@@ -782,6 +786,14 @@ async def get_treatment_progress(
     ).all()
     recently_triggered = [t.trigger_type for t in recent_logs]
 
+    # Phase session done = started at least once since phase unlocked
+    phase_session_log = db.query(TriggerLog).filter(
+        TriggerLog.user_id == user_id,
+        TriggerLog.trigger_type == f"phase_session:{phase}",
+        TriggerLog.last_executed >= progress.phase_unlocked_at,
+    ).first()
+    phase_session_done = phase_session_log is not None
+
     return {
         "phase": phase,
         "phase_label": PHASE_LABELS.get(phase, phase),
@@ -793,6 +805,7 @@ async def get_treatment_progress(
         "can_advance": can_advance,
         "active_trigger": active_trigger,
         "recently_triggered": recently_triggered,
+        "phase_session_done": phase_session_done,
     }
 
 

@@ -231,6 +231,13 @@ const INTENT_LABELS: Record<string, string> = {
   'trigger:maintenance_planning':       '维持规划',
 };
 
+const PHASE_SESSION_DESCRIPTIONS: Record<string, string> = {
+  intro:        '和小暖聊聊抑郁的规律、为什么要记录活动，以及怎么开始',
+  setup:        '回顾上周记录，一步步建立你的价值观、活动库和第一个计划',
+  first_review: '聊聊第一周计划完成得怎么样，处理遇到的障碍，了解社会支持',
+  review_cycle: '回顾上周计划，处理没完成的活动，安排下周新计划',
+};
+
 const TRIGGER_PREVIEWS: Record<string, string> = {
   monitoring_troubleshoot:  '好几天没看到你的记录了，发生什么了吗？',
   values_quality_guidance:  '我看了一下你的活动和价值观，想和你聊聊是不是更合适一些',
@@ -440,58 +447,70 @@ function TreatmentProgressCard({
                     {phase.desc}
                   </Text>
 
-                  {/* Current phase: show criteria */}
-                  {isCurrent && data.criteria.length > 0 && (
-                    <View className="mt-2 gap-1.5">
-                      {data.criteria.map(c => (
-                        <View key={c.key} className="flex-row items-center gap-1.5">
-                          <View className={`w-3.5 h-3.5 rounded-full items-center justify-center
-                            ${c.done ? 'bg-green-400' : 'bg-gray-200'}
-                          `}>
-                            {c.done && <Text className="text-white text-[8px] font-bold">✓</Text>}
+                  {/* Current phase: two parallel modules */}
+                  {isCurrent && (
+                    <View className="mt-3 gap-2">
+                      {/* 本阶段会话 */}
+                      <View className="bg-orange-50 rounded-xl border border-orange-100 px-3 py-2.5">
+                        <Text className="text-[10px] text-orange-400 font-medium mb-1">本阶段会话</Text>
+                        <Text className="text-[11px] text-gray-500 leading-relaxed mb-2">
+                          {PHASE_SESSION_DESCRIPTIONS[data.phase] ?? '和小暖聊聊本阶段的内容'}
+                        </Text>
+                        {data.phase_session_done ? (
+                          <Text className="text-[11px] text-green-500 font-medium">✓ 已完成</Text>
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => onStartIntent(`phase:${data.phase}`)}
+                            className="self-start px-3 py-1 bg-orange-500 rounded-lg"
+                          >
+                            <Text className="text-xs text-white font-medium">开始本阶段对话</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+
+                      {/* 本阶段任务 */}
+                      {data.criteria.length > 0 && (
+                        <View className="bg-gray-50 rounded-xl border border-gray-100 px-3 py-2.5">
+                          <Text className="text-[10px] text-gray-400 font-medium mb-2">本阶段任务</Text>
+                          <View className="gap-1.5">
+                            {data.criteria.map(c => (
+                              <View key={c.key} className="flex-row items-center gap-1.5">
+                                <View className={`w-3.5 h-3.5 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
+                                  {c.done && <Text className="text-white text-[8px] font-bold">✓</Text>}
+                                </View>
+                                <Text className={`text-[11px] flex-1 ${c.done ? 'text-gray-300 line-through' : 'text-gray-600'}`}>
+                                  {c.label}
+                                </Text>
+                                {c.target !== undefined && c.target > 1 && (
+                                  <Text className="text-[11px] text-gray-400">{c.current}/{c.target}</Text>
+                                )}
+                              </View>
+                            ))}
                           </View>
-                          <Text className={`text-[11px] flex-1 ${c.done ? 'text-gray-300 line-through' : 'text-gray-600'}`}>
-                            {c.label}
+                          <Text className={`text-[11px] mt-2 ${data.days_until_eligible > 0 ? 'text-orange-400' : data.criteria_met ? 'text-green-500' : 'text-gray-400'}`}>
+                            {data.days_until_eligible > 0
+                              ? `本阶段第 ${data.phase_days} 天，还需 ${data.days_until_eligible} 天才能推进`
+                              : data.criteria_met
+                                ? '所有条件已达成，即将进入下一阶段'
+                                : '时间条件已满足，完成以上条件后自动推进'}
                           </Text>
-                          {c.target !== undefined && c.target > 1 && (
-                            <Text className="text-[11px] text-gray-400">{c.current}/{c.target}</Text>
-                          )}
                         </View>
-                      ))}
+                      )}
 
-                      <Text className={`text-[11px] mt-1
-                        ${isForever ? 'text-gray-400' : data.days_until_eligible > 0 ? 'text-orange-400' : data.criteria_met ? 'text-green-500' : 'text-gray-400'}
-                      `}>
-                        {isForever
-                          ? `已进入持续执行阶段 · 每7天进入新一轮回顾`
-                          : data.days_until_eligible > 0
-                            ? `本阶段第 ${data.phase_days} 天，还需 ${data.days_until_eligible} 天才能推进`
-                            : data.criteria_met
-                              ? '所有条件已达成，即将进入下一阶段'
-                              : '时间条件已满足，完成以上条件后自动推进'}
-                      </Text>
+                      {/* review_cycle: no hard criteria */}
+                      {data.criteria.length === 0 && (
+                        <View className="bg-gray-50 rounded-xl border border-gray-100 px-3 py-2">
+                          <Text className="text-[11px] text-gray-400">
+                            {`第 ${data.review_cycle_count} 周 · 持续执行中`}
+                          </Text>
+                        </View>
+                      )}
                     </View>
-                  )}
-
-                  {/* Current phase with no criteria (review_cycle) */}
-                  {isCurrent && data.criteria.length === 0 && (
-                    <Text className="text-[11px] text-gray-400 mt-1">
-                      {`第 ${data.review_cycle_count} 周 · 持续执行中`}
-                    </Text>
                   )}
                 </View>
               </View>
             );
           })}
-
-          {/* Phase task button */}
-          <TouchableOpacity
-            onPress={() => onStartIntent(`phase:${data.phase}`)}
-            className="mx-4 mt-1 mb-1 px-3 py-2.5 bg-orange-50 rounded-xl border border-orange-100 flex-row items-center justify-between"
-          >
-            <Text className="text-xs text-orange-600 font-medium">和小暖聊本周任务</Text>
-            <Text className="text-orange-400 text-xs">→</Text>
-          </TouchableOpacity>
 
           {/* Active trigger card */}
           {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (

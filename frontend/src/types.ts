@@ -143,6 +143,7 @@ export interface TreatmentProgressData {
   can_advance: boolean;
   active_trigger?: string | null;
   recently_triggered?: string[];
+  phase_session_done?: boolean;
 }
 
 export interface UserState {
