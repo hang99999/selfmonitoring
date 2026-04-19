@@ -652,26 +652,6 @@ async def chat(
     state["review_cycle_count"] = progress.review_cycle_count
     state["treatment_phase_days"] = (datetime.now() - progress.phase_unlocked_at).days
 
-    # Suppress trigger system during linear phases — treatment module takes priority.
-    # Each phase allows only the triggers that are clinically relevant at that point.
-    if progress.phase == "intro":
-        # intro phase handles BA introduction itself; only allow monitoring check
-        always_on = {"monitoring_troubleshoot"}
-        state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
-    elif progress.phase == "setup":
-        # setup is when users fill in values/activities; allow quality guidance
-        always_on = {"monitoring_troubleshoot", "values_quality_guidance"}
-        state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
-    elif progress.phase == "first_review":
-        # first_review handles social contract itself; only allow monitoring check
-        always_on = {"monitoring_troubleshoot"}
-        state["active_triggers"] = [t for t in state["active_triggers"] if t in always_on]
-    # review_cycle: no suppression — all triggers operate normally
-
-    # Dev override: inject a manually-set trigger, bypassing conditions + phase filter
-    if req.user_id in _debug_triggers:
-        state["active_triggers"] = [_debug_triggers.pop(req.user_id)]
-
     system = chatbot_system_prompt(state, companion_name, db=db, session_intent=req.session_intent)
 
     # yunwu.ai (and most OpenAI-compatible APIs) reject requests with zero user
@@ -682,12 +662,11 @@ async def chat(
     # Call LLM
     reply = await call_llm_chat(system, llm_messages)
 
-    # Record triggers
-    for trigger in state.get("active_triggers", []):
-        _record_trigger(db, req.user_id, trigger)
-
-    # Record phase session start
-    if req.session_intent and req.session_intent.startswith("phase:"):
+    # Record trigger/phase session usage (for cooldowns and phase_session_done tracking)
+    if req.session_intent and req.session_intent.startswith("trigger:"):
+        trigger_key = req.session_intent.removeprefix("trigger:")
+        _record_trigger(db, req.user_id, trigger_key)
+    elif req.session_intent and req.session_intent.startswith("phase:"):
         _record_trigger(db, req.user_id, f"phase_session:{progress.phase}")
 
     # Strip hidden [ACT:...] tag
