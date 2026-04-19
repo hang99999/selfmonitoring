@@ -702,8 +702,8 @@ export default function ChatbotScreen() {
         setMessages(msgs);
         setInitializing(false);
 
-        // Only trigger opening message for a brand-new (empty) session
-        if (msgs.length === 0 && (state.active_triggers.length > 0 || state.is_first_conversation)) {
+        // Only trigger opening message for first-ever conversation (onboarding)
+        if (msgs.length === 0 && state.is_first_conversation) {
           if (cancelled) return;
           setLoading(true);
           try {
@@ -796,19 +796,6 @@ export default function ChatbotScreen() {
       setUserState(state);
       setTreatmentProgress(progress);
 
-      if (state.active_triggers.length > 0) {
-        setLoading(true);
-        try {
-          const res = await api.sendChatMessage(session.id, '', userId);
-          if (res.is_crisis) setShowCrisis(true);
-          setMessages([{ role: 'assistant', content: res.reply }]);
-          if (res.detected_activity) setDetectedActivity(res.detected_activity);
-        } catch {
-          setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
-        } finally {
-          setLoading(false);
-        }
-      }
     } catch {
       Alert.alert('提示', '无法创建新对话，请重试');
     }
