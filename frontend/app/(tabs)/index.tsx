@@ -250,15 +250,18 @@ const PHASE_CONVERSATION: Record<string, string> = {
   review_cycle: '每周：回顾进度 → 调整计划 → 安排新的一周',
 };
 
-function PhaseCard({ data, onPress }: { data: TreatmentProgressData; onPress: () => void }) {
+function PhaseCard({ data, onStartSession, onOpenChat }: {
+  data: TreatmentProgressData;
+  onStartSession: () => void;
+  onOpenChat: () => void;
+}) {
   const [expanded, setExpanded] = useState(true);
-  const isOngoing = data.phase === 'review_cycle';
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const totalCriteria = data.criteria.length;
 
   return (
     <View className="w-full bg-white rounded-2xl border border-orange-100 mb-6 overflow-hidden">
-      {/* Header row — always visible, tap to expand */}
+      {/* Header */}
       <TouchableOpacity
         onPress={() => setExpanded(e => !e)}
         activeOpacity={0.7}
@@ -272,41 +275,50 @@ function PhaseCard({ data, onPress }: { data: TreatmentProgressData; onPress: ()
         <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
       </TouchableOpacity>
 
-      {/* Description — always visible */}
-      <Text className="text-sm text-gray-600 leading-relaxed px-5 pb-4">
-        {PHASE_CONVERSATION[data.phase]}
-      </Text>
+      {expanded && (
+        <View className="px-4 pb-4 gap-3">
+          {/* 本阶段会话 */}
+          <View className="bg-orange-50 rounded-xl border border-orange-100 px-4 py-3">
+            <Text className="text-[11px] font-semibold text-orange-400 mb-1">本阶段会话</Text>
+            <Text className="text-xs text-gray-500 leading-relaxed mb-3">
+              {PHASE_CONVERSATION[data.phase]}
+            </Text>
+            {data.phase_session_done ? (
+              <Text className="text-xs text-green-500 font-medium">✓ 已完成</Text>
+            ) : (
+              <TouchableOpacity
+                onPress={onStartSession}
+                activeOpacity={0.85}
+                className="py-2.5 bg-orange-500 rounded-xl items-center"
+              >
+                <Text className="text-white text-xs font-semibold">开始本阶段对话 →</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-      {/* Criteria — only when expanded */}
-      {expanded && data.criteria.length > 0 && (
-        <View className="px-5 pb-4 border-t border-gray-50 pt-3 gap-2">
-          <Text className="text-xs font-medium text-gray-400 mb-1">本阶段任务</Text>
-          {data.criteria.map(c => (
-            <View key={c.key} className="flex-row items-center gap-2">
-              <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
-                {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
+          {/* 本阶段任务 */}
+          {data.criteria.length > 0 && (
+            <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3">
+              <Text className="text-[11px] font-semibold text-gray-400 mb-2">本阶段任务</Text>
+              <View className="gap-2">
+                {data.criteria.map(c => (
+                  <View key={c.key} className="flex-row items-center gap-2">
+                    <View className={`w-4 h-4 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
+                      {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
+                    </View>
+                    <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
+                      {c.label}
+                    </Text>
+                    {c.target !== undefined && c.target > 1 && (
+                      <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
+                    )}
+                  </View>
+                ))}
               </View>
-              <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
-                {c.label}
-              </Text>
-              {c.target !== undefined && c.target > 1 && (
-                <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
-              )}
             </View>
-          ))}
+          )}
         </View>
       )}
-
-      {/* CTA */}
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.85}
-        className="mx-5 mb-4 py-3 bg-orange-500 rounded-xl items-center"
-      >
-        <Text className="text-white text-sm font-semibold">
-          {isOngoing ? '和小暖聊聊 →' : '开始本阶段对话 →'}
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -434,7 +446,8 @@ export default function HomeScreen() {
         {treatmentProgress && (
           <PhaseCard
             data={treatmentProgress}
-            onPress={() => router.push('/chatbot')}
+            onStartSession={() => router.push(`/chatbot?intent=phase:${treatmentProgress.phase}`)}
+            onOpenChat={() => router.push('/chatbot')}
           />
         )}
       </ScrollView>

@@ -5,7 +5,7 @@ import {
   ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
@@ -645,6 +645,7 @@ function HistoryModal({
 export default function ChatbotScreen() {
   const router = useRouter();
   const userId = useUserId();
+  const { intent: intentParam } = useLocalSearchParams<{ intent?: string }>();
 
   const [userState, setUserState] = useState<UserState | null>(null);
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
@@ -798,6 +799,14 @@ export default function ChatbotScreen() {
       Alert.alert('提示', '无法创建新对话，请重试');
     }
   };
+
+  // Auto-start intent session when navigated from home page with ?intent=
+  useEffect(() => {
+    if (intentParam && !initializing) {
+      handleStartIntent(intentParam);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intentParam, initializing]);
 
   // ── New conversation ────────────────────────────────────────────────────────
   const handleNewConversation = async () => {
