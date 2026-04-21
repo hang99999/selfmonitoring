@@ -13,7 +13,7 @@ from app.prompts import (
     EMPATHIC_FEEDBACK_SYSTEM,
     DAILY_SUMMARY_SYSTEM,
     WEEKLY_SUMMARY_SYSTEM,
-    CHATBOT_SYSTEM_PROMPT,
+    CHATBOT_CORE_PROMPT,
 )
 
 
@@ -67,7 +67,7 @@ _PROMPT_SEEDS = [
     ("empathic_feedback",     "小暖即时反馈：对用户完成的活动给出温暖的正向强化回应",                    EMPATHIC_FEEDBACK_SYSTEM),
     ("daily_summary",         "每日总结：基于当天活动记录生成行为聚焦的每日小结",                        DAILY_SUMMARY_SYSTEM),
     ("weekly_summary",        "每周报告：生成行为-情绪关联洞察报告，包含结构化JSON",                     WEEKLY_SUMMARY_SYSTEM),
-    ("chatbot",               "聊天伙伴人格：小暖的完整人格设定、对话模式、触发对话说明（核心prompt）",   CHATBOT_SYSTEM_PROMPT),
+    ("chatbot_core",          "小暖核心人格：角色定位、BA原则、对话风格、安全规则（三条路径共用）",        CHATBOT_CORE_PROMPT),
 ]
 
 
