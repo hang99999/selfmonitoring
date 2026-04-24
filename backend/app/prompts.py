@@ -733,7 +733,10 @@ def chatbot_system_prompt(user_state: dict, companion_name: str, db=None, sessio
 
     if session_intent.startswith("phase:"):
         # 阶段对话：核心人格 + 当前阶段专属指令
-        return base + treatment_module_prompt(user_state) + global_ctx + session_ctx
+        # 用 session_intent 里的阶段，防止 auto-advance 在同一请求内改变 phase 后错用新阶段 prompt
+        intent_phase = session_intent.removeprefix("phase:")
+        state_for_module = {**user_state, "treatment_phase": intent_phase}
+        return base + treatment_module_prompt(state_for_module) + global_ctx + session_ctx
 
     if session_intent.startswith("trigger:"):
         # 触发对话：核心人格 + 该触发专属指令
