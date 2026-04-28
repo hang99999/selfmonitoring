@@ -146,14 +146,12 @@ export default function ActivitiesScreen() {
                       </TouchableOpacity>
                     </View>
                   ))}
-                  {domainValues.length === 0 && (
-                    <TouchableOpacity
-                      onPress={() => setAddActivityFor({ domainId: domain.id, valueId: null })}
-                      className="flex-row items-center mt-3 mb-1"
-                    >
-                      <Text className="text-xs text-orange-500">+ 添加活动</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    onPress={() => setAddActivityFor({ domainId: domain.id, valueId: null })}
+                    className="flex-row items-center mt-3 mb-1"
+                  >
+                    <Text className="text-xs text-orange-500">+ 添加活动</Text>
+                  </TouchableOpacity>
                   {domainValues.map(value => {
                     const valueActs = activities.filter(a => a.value_id === value.id);
                     return (
