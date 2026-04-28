@@ -137,6 +137,7 @@ export interface TreatmentProgressData {
   phase_label: string;
   review_cycle_count: number;
   phase_days: number;
+  days_required: number | null;
   days_until_eligible: number;
   criteria: TreatmentCriterion[];
   criteria_met: boolean;

@@ -250,14 +250,28 @@ const PHASE_CONVERSATION: Record<string, string> = {
   review_cycle: '每周：回顾进度 → 调整计划 → 安排新的一周',
 };
 
-function PhaseCard({ data, onStartSession, onOpenChat }: {
+function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
   data: TreatmentProgressData;
   onStartSession: () => void;
   onOpenChat: () => void;
+  onAdvance: () => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [advancing, setAdvancing] = useState(false);
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const totalCriteria = data.criteria.length;
+  const canManualAdvance = data.criteria_met && data.phase !== 'review_cycle';
+
+  const handleAdvance = async () => {
+    setAdvancing(true);
+    try { await onAdvance(); } finally { setAdvancing(false); }
+  };
+
+  const timeText = data.phase === 'review_cycle'
+    ? null
+    : data.days_required === null
+      ? '无时间限制'
+      : `已进入 ${data.phase_days} 天 / 需满 ${data.days_required} 天`;
 
   return (
     <View className="w-full bg-white rounded-2xl border border-orange-100 mb-6 overflow-hidden">
@@ -315,6 +329,30 @@ function PhaseCard({ data, onStartSession, onOpenChat }: {
                   </View>
                 ))}
               </View>
+            </View>
+          )}
+
+          {/* 进入下一阶段 */}
+          {data.phase !== 'review_cycle' && (
+            <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3 gap-2">
+              <Text className="text-[11px] font-semibold text-gray-400">进入下一阶段</Text>
+              {timeText && (
+                <Text className="text-xs text-gray-500">{timeText}</Text>
+              )}
+              {canManualAdvance ? (
+                <TouchableOpacity
+                  onPress={handleAdvance}
+                  disabled={advancing}
+                  activeOpacity={0.85}
+                  className="mt-1 py-2.5 bg-indigo-500 rounded-xl items-center"
+                >
+                  <Text className="text-white text-xs font-semibold">
+                    {advancing ? '处理中...' : '立即进入下一阶段 →'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text className="text-xs text-gray-400">完成上方任务后可手动跳过时间限制</Text>
+              )}
             </View>
           )}
         </View>
@@ -448,6 +486,13 @@ export default function HomeScreen() {
             data={treatmentProgress}
             onStartSession={() => router.push(`/chatbot?intent=phase:${treatmentProgress.phase}`)}
             onOpenChat={() => router.push('/chatbot')}
+            onAdvance={async () => {
+              const result = await api.advancePhase(userId);
+              if (result.ok) {
+                const updated = await api.getTreatmentProgress(userId);
+                setTreatmentProgress(updated);
+              }
+            }}
           />
         )}
       </ScrollView>

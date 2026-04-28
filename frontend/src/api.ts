@@ -214,6 +214,12 @@ export const api = {
   getTreatmentProgress: (userId = 'default_user') =>
     request<TreatmentProgressData>(`/api/chatbot/treatment/progress?user_id=${userId}`),
 
+  advancePhase: (userId = 'default_user') =>
+    request<{ ok: boolean; new_phase?: string; reason?: string }>('/api/chatbot/treatment/advance', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    }),
+
   debugSetPhase: (userId: string, phase: string, phaseDays = 7, reviewCycleCount = 1) =>
     request<{ ok: boolean }>('/api/chatbot/treatment/debug', {
       method: 'PUT',

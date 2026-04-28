@@ -187,6 +187,30 @@ class TreatmentProgress(Base):
     updated_at = Column(DateTime, default=localnow)
 
 
+class PhaseConfig(Base):
+    """用户自定义的阶段推进配置（在 pgAdmin4 中直接修改）"""
+    __tablename__ = "phase_config"
+
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    # 阶段1 · 启动监测
+    intro_time_limit = Column(Boolean, default=True)
+    intro_days = Column(Integer, default=7)
+    intro_records_target = Column(Integer, default=3)
+    # 阶段2 · 价值观 × 活动 × 计划
+    setup_time_limit = Column(Boolean, default=True)
+    setup_days = Column(Integer, default=7)
+    setup_values_target = Column(Integer, default=1)
+    setup_activities_target = Column(Integer, default=3)
+    setup_plans_target = Column(Integer, default=1)
+    # 阶段3 · 首次回顾
+    first_review_time_limit = Column(Boolean, default=True)
+    first_review_days = Column(Integer, default=7)
+    first_review_completed_target = Column(Integer, default=1)
+    # 执行循环
+    review_cycle_days = Column(Integer, default=7)
+    updated_at = Column(DateTime, default=localnow)
+
+
 class Supporter(Base):
     """社会支持者——用户的支持网络成员"""
     __tablename__ = "supporters"

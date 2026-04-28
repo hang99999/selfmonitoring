@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine, SessionLocal
-from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress
+from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress, PhaseConfig
 from app.routers import records, insights, stats, activities, chatbot, auth, supporters
 from app.prompts import (
     SAFETY_CHECK_SYSTEM,
