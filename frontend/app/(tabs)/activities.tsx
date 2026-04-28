@@ -45,7 +45,7 @@ function AddValueModal({
 // ── Add Activity Modal ────────────────────────────────────────────────────────
 function AddActivityModal({
   visible, domainId, valueId, onClose, onAdded,
-}: { visible: boolean; domainId: string; valueId: string; onClose: () => void; onAdded: () => void }) {
+}: { visible: boolean; domainId: string; valueId: string | null; onClose: () => void; onAdded: () => void }) {
   const userId = useUserId();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -53,7 +53,7 @@ function AddActivityModal({
     if (!text.trim() || saving) return;
     setSaving(true);
     try {
-      await api.createActivity({ name: text.trim(), life_domain_id: domainId, value_id: valueId, user_id: userId });
+      await api.createActivity({ name: text.trim(), life_domain_id: domainId, value_id: valueId ?? undefined, user_id: userId });
       onAdded(); onClose(); setText('');
     } finally { setSaving(false); }
   };
@@ -87,7 +87,7 @@ export default function ActivitiesScreen() {
   const [supporters, setSupporters] = useState<Supporter[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [addValueFor, setAddValueFor] = useState<string | null>(null);
-  const [addActivityFor, setAddActivityFor] = useState<{ domainId: string; valueId: string } | null>(null);
+  const [addActivityFor, setAddActivityFor] = useState<{ domainId: string; valueId: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -136,8 +136,23 @@ export default function ActivitiesScreen() {
 
               {isOpen && (
                 <View className="px-4 pb-4 border-t border-gray-50">
+                  {/* Activities not linked to any value */}
+                  {activities.filter(a => a.life_domain_id === domain.id && !a.value_id).map(act => (
+                    <View key={act.id} className="flex-row items-center mt-2">
+                      <Text className="text-orange-400 mr-2">•</Text>
+                      <Text className="text-sm text-gray-700 flex-1">{act.name}</Text>
+                      <TouchableOpacity onPress={() => api.deleteActivity(act.id).then(load)}>
+                        <Text className="text-gray-300 text-xs">✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                   {domainValues.length === 0 && (
-                    <Text className="text-sm text-gray-400 py-3">还没有价值观，先添加一个</Text>
+                    <TouchableOpacity
+                      onPress={() => setAddActivityFor({ domainId: domain.id, valueId: null })}
+                      className="flex-row items-center mt-3 mb-1"
+                    >
+                      <Text className="text-xs text-orange-500">+ 添加活动</Text>
+                    </TouchableOpacity>
                   )}
                   {domainValues.map(value => {
                     const valueActs = activities.filter(a => a.value_id === value.id);
