@@ -31,7 +31,7 @@ class AccessCode(Base):
 
 
 class LifeDomain(Base):
-    """生活领域（5个）：亲密关系 / 教育与职业 / 休闲兴趣 / 身心灵 / 日常责任"""
+    """生活领域（5个）：亲密关系 / 教育与职业 / 休闲兴趣 / 自我关怀 / 日常责任"""
     __tablename__ = "life_domains"
 
     id = Column(String, primary_key=True, default=generate_uuid)

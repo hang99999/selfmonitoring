@@ -7,7 +7,7 @@ import { api } from '../src/api';
 import type { MoodRecord, LifeDomain } from '../src/types';
 
 // Fixed domain list (names match DEFAULT_LIFE_DOMAINS on backend)
-const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '身心灵', '日常责任', '其他'] as const;
+const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '自我关怀', '日常责任', '其他'] as const;
 
 interface Props {
   visible: boolean;

@@ -126,7 +126,7 @@ async def submit_record(
         db.commit()
 
     def _resolve_domain_id(domain_name: str, uid: str) -> Optional[str]:
-        """Resolve a domain name like '身心灵' to its UUID; returns None for '其他' or unknown."""
+        """Resolve a domain name like '自我关怀' to its UUID; returns None for '其他' or unknown."""
         if not domain_name or domain_name == "其他":
             return None
         domain = db.query(LifeDomain).filter(

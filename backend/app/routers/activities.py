@@ -25,7 +25,7 @@ DEFAULT_LIFE_DOMAINS = [
     {"name": "亲密关系", "description": "家人、伴侣、朋友等亲近关系"},
     {"name": "教育与职业", "description": "学习、工作、职业发展"},
     {"name": "休闲兴趣", "description": "爱好、娱乐、创意活动"},
-    {"name": "身心灵", "description": "身体健康、心理健康、精神成长"},
+    {"name": "自我关怀", "description": "身体健康、心理健康、精神成长"},
     {"name": "日常责任", "description": "家务、生活管理、社会责任"},
 ]
 
