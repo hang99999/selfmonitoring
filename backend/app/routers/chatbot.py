@@ -80,10 +80,10 @@ def _get_or_create_progress(db: Session, user_id: str) -> TreatmentProgress:
     return progress
 
 
-def _get_or_create_config(db: Session, user_id: str) -> PhaseConfig:
-    cfg = db.query(PhaseConfig).filter(PhaseConfig.user_id == user_id).first()
+def _get_or_create_config(db: Session) -> PhaseConfig:
+    cfg = db.query(PhaseConfig).filter(PhaseConfig.config_key == "global").first()
     if not cfg:
-        cfg = PhaseConfig(user_id=user_id)
+        cfg = PhaseConfig(config_key="global")
         db.add(cfg)
         db.commit()
         db.refresh(cfg)
@@ -92,7 +92,7 @@ def _get_or_create_config(db: Session, user_id: str) -> PhaseConfig:
 
 def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progress: TreatmentProgress):
     """Check unlock criteria and auto-advance to the next phase if met. Mutates progress in DB."""
-    cfg = _get_or_create_config(db, user_id)
+    cfg = _get_or_create_config(db)
     now = datetime.now()
     phase = progress.phase
     phase_age_days = (now - progress.phase_unlocked_at).days
@@ -717,7 +717,7 @@ async def get_treatment_progress(
 ):
     """Return the user's current treatment phase with detailed criteria status."""
     progress = _get_or_create_progress(db, user_id)
-    cfg = _get_or_create_config(db, user_id)
+    cfg = _get_or_create_config(db)
     now = datetime.now()
     phase_days = (now - progress.phase_unlocked_at).days
 
@@ -873,7 +873,7 @@ class AdvancePhaseRequest(BaseModel):
 async def advance_phase(req: AdvancePhaseRequest, db: Session = Depends(get_db)):
     """手动进入下一阶段：只检查任务标准，忽略时间限制。"""
     progress = _get_or_create_progress(db, req.user_id)
-    cfg = _get_or_create_config(db, req.user_id)
+    cfg = _get_or_create_config(db)
     user_state = _compute_user_state(db, req.user_id)
     phase = progress.phase
     now = datetime.now()

@@ -188,10 +188,10 @@ class TreatmentProgress(Base):
 
 
 class PhaseConfig(Base):
-    """用户自定义的阶段推进配置（在 pgAdmin4 中直接修改）"""
+    """全局阶段推进配置，整张表只有一行 config_key='global'（在 pgAdmin4 中直接修改）"""
     __tablename__ = "phase_config"
 
-    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    config_key = Column(String, primary_key=True, default="global")
     # 阶段1 · 启动监测
     intro_time_limit = Column(Boolean, default=True)
     intro_days = Column(Integer, default=7)
