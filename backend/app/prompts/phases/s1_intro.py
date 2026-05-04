@@ -4,7 +4,7 @@
 """
 
 NEEDS_GLOBAL_CTX = False
-NEEDS_SESSION_CTX = True
+NEEDS_SESSION_CTX = False
 
 
 def get_prompt(_state: dict) -> str:
