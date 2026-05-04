@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList,
+  View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
   KeyboardAvoidingView, Platform, Modal, Pressable,
   ActivityIndicator, Alert,
 } from 'react-native';
@@ -10,7 +10,7 @@ import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
 import { useUserId } from '../src/userStore';
-import type { ChatMessage, ChatSession, UserState, TreatmentProgressData } from '../src/types';
+import type { ChatMessage, ChatSession, UserState, TreatmentProgressData, LifeDomain } from '../src/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -181,6 +181,131 @@ function Bubble({ msg }: { msg: ChatMessage }) {
         </Text>
       </View>
     </View>
+  );
+}
+
+// ── S2 Value Modal ────────────────────────────────────────────────────────────
+function S2ValueModal({
+  userId, onClose, onSubmitMessage,
+}: { userId: string; onClose: () => void; onSubmitMessage: (msg: string) => void }) {
+  const [domains, setDomains] = useState<LifeDomain[]>([]);
+  const [selected, setSelected] = useState<LifeDomain | null>(null);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getDomains(userId).then(setDomains).catch(() => {});
+  }, [userId]);
+
+  const submit = async () => {
+    if (!selected || !text.trim() || saving) return;
+    setSaving(true);
+    try {
+      await api.createValue(selected.id, text.trim(), userId);
+      onSubmitMessage(`【已填写价值观】领域：${selected.name}，价值观：${text.trim()}`);
+      onClose();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable className="flex-1" onPress={onClose} />
+      <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
+        <Text className="text-base font-bold text-gray-800 mb-4">填写价值观</Text>
+        <Text className="text-xs text-gray-500 mb-2">选择生活领域</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+          <View className="flex-row gap-2 pb-1">
+            {domains.map(d => (
+              <TouchableOpacity
+                key={d.id}
+                onPress={() => setSelected(d)}
+                className={`px-4 py-2 rounded-xl border ${selected?.id === d.id ? 'bg-indigo-500 border-indigo-500' : 'bg-white border-gray-200'}`}
+              >
+                <Text className={`text-sm ${selected?.id === d.id ? 'text-white font-medium' : 'text-gray-600'}`}>{d.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+        <Text className="text-xs text-gray-500 mb-2">你在这个领域里真正在乎什么？</Text>
+        <TextInput
+          value={text} onChangeText={setText} autoFocus
+          placeholder="例如：做一个关心家人的人"
+          placeholderTextColor="#9ca3af"
+          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
+        />
+        <TouchableOpacity
+          onPress={submit}
+          disabled={!selected || !text.trim() || saving}
+          className="w-full py-4 bg-indigo-500 rounded-2xl items-center"
+          style={{ opacity: (!selected || !text.trim() || saving) ? 0.4 : 1 }}
+        >
+          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">提交给小暖看看</Text>}
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+// ── S2 Activity Modal ─────────────────────────────────────────────────────────
+function S2ActivityModal({
+  userId, onClose, onSubmitMessage,
+}: { userId: string; onClose: () => void; onSubmitMessage: (msg: string) => void }) {
+  const [domains, setDomains] = useState<LifeDomain[]>([]);
+  const [selected, setSelected] = useState<LifeDomain | null>(null);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getDomains(userId).then(setDomains).catch(() => {});
+  }, [userId]);
+
+  const submit = async () => {
+    if (!text.trim() || saving) return;
+    setSaving(true);
+    try {
+      await api.createActivity({ name: text.trim(), life_domain_id: selected?.id, user_id: userId });
+      const suffix = selected ? `（领域：${selected.name}）` : '';
+      onSubmitMessage(`【已填写活动】${text.trim()}${suffix}`);
+      onClose();
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <Pressable className="flex-1" onPress={onClose} />
+      <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
+        <Text className="text-base font-bold text-gray-800 mb-4">填写活动</Text>
+        <Text className="text-xs text-gray-500 mb-2">选择生活领域（可选）</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+          <View className="flex-row gap-2 pb-1">
+            {domains.map(d => (
+              <TouchableOpacity
+                key={d.id}
+                onPress={() => setSelected(selected?.id === d.id ? null : d)}
+                className={`px-4 py-2 rounded-xl border ${selected?.id === d.id ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'}`}
+              >
+                <Text className={`text-sm ${selected?.id === d.id ? 'text-white font-medium' : 'text-gray-600'}`}>{d.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+        <Text className="text-xs text-gray-500 mb-2">这个活动具体是什么？</Text>
+        <TextInput
+          value={text} onChangeText={setText} autoFocus
+          placeholder="例如：每周二晚上打20分钟羽毛球"
+          placeholderTextColor="#9ca3af"
+          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
+        />
+        <TouchableOpacity
+          onPress={submit}
+          disabled={!text.trim() || saving}
+          className="w-full py-4 bg-orange-500 rounded-2xl items-center"
+          style={{ opacity: (!text.trim() || saving) ? 0.4 : 1 }}
+        >
+          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">提交给小暖看看</Text>}
+        </TouchableOpacity>
+      </View>
+    </Modal>
   );
 }
 
@@ -661,6 +786,8 @@ export default function ChatbotScreen() {
   const [detectedActivity, setDetectedActivity] = useState<{ type: 'completed' | 'planned'; name: string } | null>(null);
   const [showRecord, setShowRecord] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
+  const [showS2Value, setShowS2Value] = useState(false);
+  const [showS2Activity, setShowS2Activity] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   // ── Core send ───────────────────────────────────────────────────────────────
@@ -918,6 +1045,23 @@ export default function ChatbotScreen() {
             />
           )}
 
+          {currentIntent === 'phase:setup' && (
+            <View className="flex-row gap-2 px-4 py-2 bg-indigo-50 border-t border-indigo-100">
+              <TouchableOpacity
+                onPress={() => setShowS2Value(true)}
+                className="flex-1 py-2.5 bg-indigo-100 rounded-xl items-center"
+              >
+                <Text className="text-xs text-indigo-700 font-medium">💡 填写价值观</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowS2Activity(true)}
+                className="flex-1 py-2.5 bg-orange-100 rounded-xl items-center"
+              >
+                <Text className="text-xs text-orange-700 font-medium">＋ 填写活动</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View className="flex-row items-end gap-2 px-4 py-3 bg-white border-t border-gray-100">
             <TextInput
               value={input}
@@ -963,6 +1107,20 @@ export default function ChatbotScreen() {
         <QuickPlanModal
           defaultName={detectedActivity?.name ?? ''}
           onClose={() => setShowPlan(false)}
+        />
+      )}
+      {showS2Value && (
+        <S2ValueModal
+          userId={userId}
+          onClose={() => setShowS2Value(false)}
+          onSubmitMessage={_sendMessage}
+        />
+      )}
+      {showS2Activity && (
+        <S2ActivityModal
+          userId={userId}
+          onClose={() => setShowS2Activity(false)}
+          onSubmitMessage={_sendMessage}
         />
       )}
     </SafeAreaView>

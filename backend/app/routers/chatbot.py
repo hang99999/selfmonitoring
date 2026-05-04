@@ -199,6 +199,12 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     )
     high_importance_low_enjoyment_ratio = round(hi_lo / len(records_7d), 2) if records_7d else 0.0
 
+    recent_activity_records = [
+        {"activity": r.activity, "pleasure": r.pleasure_score, "importance": r.importance_score}
+        for r in sorted(records_7d, key=lambda x: x.timestamp, reverse=True)
+        if r.activity
+    ][:8]
+
     def _planned_in_range(start_str: str, end_str: str):
         return (
             db.query(PlannedActivity)
@@ -431,6 +437,7 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         "user_values_summary": values_by_domain,
         "user_top_activities": top_activities,
         "active_triggers": top_trigger,
+        "recent_activity_records": recent_activity_records,
     }
 
 
