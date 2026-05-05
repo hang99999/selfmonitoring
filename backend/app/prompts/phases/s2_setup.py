@@ -1,11 +1,11 @@
 """S2 — 价值观 × 活动 × 计划（对应 BATD-R Session 2–4）。
 
-本阶段不注入完整 session_ctx，只注入最小所需上下文。
+本阶段不追加 global_ctx 或 session_ctx，只在本 prompt 内注入近 7 天活动记录。
 """
 
 import json
 
-NEEDS_GLOBAL_CTX = True
+NEEDS_GLOBAL_CTX = False
 NEEDS_SESSION_CTX = False
 
 
@@ -24,7 +24,7 @@ def get_prompt(state: dict) -> str:
 ## Background:
 用户已完成第一阶段对话，并进行了至少一周的活动记录。本阶段的目标是：帮用户理解"生活领域→价值观→活动"的框架，填写第一条价值观和对应活动，并安排第一个活动计划。整个流程按 Part 0 → Part 1 → Part 2 顺序推进。
 
-## 当前上下文数据（本阶段专用）：
+## 当前上下文数据：
 - 本周记录总数：{total_records}
 - 近7天活动记录（最多8条，含愉悦度和重要性评分）：{recent_records_str}
 

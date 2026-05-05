@@ -412,6 +412,10 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         "high_importance_low_enjoyment_ratio": high_importance_low_enjoyment_ratio,
         "planned_activities_this_week": len(this_week_planned),
         "completed_planned_activities": sum(1 for p in this_week_planned if p.completed),
+        "this_week_activity_plan": [
+            {"name": p.activity_name, "date": p.scheduled_date, "completed": p.completed}
+            for p in sorted(this_week_planned, key=lambda x: x.scheduled_date)
+        ],
         "completion_rate_this_week": completion_rate_this_week,
         "completion_rate_last_week": completion_rate_last_week,
         "completion_rate_two_weeks_ago": completion_rate_two_weeks,
