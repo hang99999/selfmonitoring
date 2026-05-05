@@ -679,12 +679,20 @@ async def chat(
     state["review_cycle_count"] = progress.review_cycle_count
     state["treatment_phase_days"] = (datetime.now() - progress.phase_unlocked_at).days
 
-    system = chatbot_system_prompt(state, companion_name, db=db, session_intent=req.session_intent)
+    # Resolve session intent: use request value if provided, else fall back to stored value
+    phase_session_obj = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+    effective_intent = req.session_intent
+    if phase_session_obj:
+        if req.session_intent and not phase_session_obj.session_intent:
+            phase_session_obj.session_intent = req.session_intent
+            db.commit()
+        elif not req.session_intent:
+            effective_intent = phase_session_obj.session_intent
+
+    system = chatbot_system_prompt(state, companion_name, db=db, session_intent=effective_intent)
 
     # Inject step tracking for phase sessions
-    phase_session_obj = None
-    if req.session_intent and req.session_intent.startswith("phase:"):
-        phase_session_obj = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+    if effective_intent and effective_intent.startswith("phase:"):
         current_step = phase_session_obj.phase_step if phase_session_obj else 0
         system += (
             f"\n\n---\n"
@@ -713,10 +721,11 @@ async def chat(
     reply, detected = _extract_activity_tag(reply)
 
     # Strip [STEP_DONE] marker and advance phase_step
-    if "[STEP_DONE]" in reply and phase_session_obj:
+    if "[STEP_DONE]" in reply:
         reply = reply.replace("[STEP_DONE]", "").strip()
-        phase_session_obj.phase_step = (phase_session_obj.phase_step or 0) + 1
-        db.commit()
+        if phase_session_obj:
+            phase_session_obj.phase_step = (phase_session_obj.phase_step or 0) + 1
+            db.commit()
 
     # Save assistant reply to DB
     db.add(ChatMessageRecord(
