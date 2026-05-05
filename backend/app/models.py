@@ -162,6 +162,7 @@ class ChatSession(Base):
     user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=localnow)
     title = Column(String(60), nullable=True)   # LLM 异步生成的会话标题
+    phase_step = Column(Integer, default=0)     # 当前 phase session 已完成的步骤数
 
 
 class ChatMessageRecord(Base):

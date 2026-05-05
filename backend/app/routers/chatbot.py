@@ -681,6 +681,19 @@ async def chat(
 
     system = chatbot_system_prompt(state, companion_name, db=db, session_intent=req.session_intent)
 
+    # Inject step tracking for phase sessions
+    phase_session_obj = None
+    if req.session_intent and req.session_intent.startswith("phase:"):
+        phase_session_obj = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+        current_step = phase_session_obj.phase_step if phase_session_obj else 0
+        system += (
+            f"\n\n---\n"
+            f"[步骤追踪] 当前必须执行：Part {current_step}。"
+            f"请严格按照 Part {current_step} 的内容作答。"
+            f"若本条回复已完整交付 Part {current_step} 的全部内容，在回复最末尾追加 [STEP_DONE]（用户看不到此标记）。"
+            f"若本条回复只是在 Part {current_step} 内回应用户的追问，不要加 [STEP_DONE]。"
+        )
+
     # yunwu.ai (and most OpenAI-compatible APIs) reject requests with zero user
     # messages. Inject a sentinel when session-start trigger fires on empty history.
     if not llm_messages:
@@ -698,6 +711,12 @@ async def chat(
 
     # Strip hidden [ACT:...] tag
     reply, detected = _extract_activity_tag(reply)
+
+    # Strip [STEP_DONE] marker and advance phase_step
+    if "[STEP_DONE]" in reply and phase_session_obj:
+        reply = reply.replace("[STEP_DONE]", "").strip()
+        phase_session_obj.phase_step = (phase_session_obj.phase_step or 0) + 1
+        db.commit()
 
     # Save assistant reply to DB
     db.add(ChatMessageRecord(
