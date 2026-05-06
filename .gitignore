@@ -8,8 +8,15 @@ dist/
 
 # Environment
 .env
+.env.production
 .venv/
 venv/
+
+# Logs
+*.log
+
+# Claude Code local config
+.claude/
 
 # Node
 node_modules/

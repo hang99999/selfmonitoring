@@ -900,6 +900,11 @@ async def debug_set_treatment_phase(req: TreatmentDebugRequest, db: Session = De
     # 把 phase_unlocked_at 设为 req.phase_days 天前，这样 phase_age_days 就等于 req.phase_days
     progress.phase_unlocked_at = datetime.now() - timedelta(days=req.phase_days)
     progress.updated_at = datetime.now()
+    # 清除该阶段的 phase_session 日志，确保"本阶段会话"按钮重新显示
+    db.query(TriggerLog).filter(
+        TriggerLog.user_id == req.user_id,
+        TriggerLog.trigger_type == f"phase_session:{req.phase}",
+    ).delete()
     db.commit()
     return {"ok": True, "phase": progress.phase, "phase_days": req.phase_days}
 
