@@ -289,6 +289,8 @@ async def submit_record(
             planned.completed = True
             planned.completion_record_id = record.id
 
+    db.flush()
+
     # 关联录音记录（如果有）
     if req.audio_record_id:
         audio_rec = db.query(AudioRecord).filter(
