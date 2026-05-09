@@ -58,6 +58,14 @@
 cd /root/repo && git pull origin main && sudo systemctl restart xiaonuan
 ```
 
+**用户常用云服务器同步流程：**
+```bash
+cd /root/repo
+git pull origin main
+sudo systemctl restart xiaonuan
+sudo systemctl status xiaonuan
+```
+
 **改 .env 后重启：**
 ```bash
 sudo systemctl restart xiaonuan

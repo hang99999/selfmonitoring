@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import os
+import subprocess
 import uuid
 import aiofiles
 import httpx
@@ -49,6 +50,39 @@ EXT_TO_NLS_FORMAT = {
     ".m4a": "aac", ".mp3": "mp3", ".wav": "wav",
     ".webm": "opus", ".ogg": "ogg",
 }
+
+
+def _to_aliyun_wav(input_path: str) -> str:
+    src = Path(input_path)
+    output_path = src.with_suffix(".aliyun.wav")
+
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(src),
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-acodec",
+                "pcm_s16le",
+                str(output_path),
+            ],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg 未安装，无法将音频转成阿里云 ASR 要求的 PCM WAV") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or "").strip()
+        raise RuntimeError(f"ffmpeg 音频转码失败: {detail}") from exc
+
+    return str(output_path)
 
 
 async def _get_nls_token(access_key_id: str, access_key_secret: str) -> str:
@@ -100,15 +134,14 @@ async def _aliyun_transcribe(file_path: str) -> str:
 
     token = await _get_nls_token(access_key_id, access_key_secret)
 
-    ext        = Path(file_path).suffix.lower()
-    nls_format = EXT_TO_NLS_FORMAT.get(ext, "aac")
+    wav_path = _to_aliyun_wav(file_path)
 
-    with open(file_path, "rb") as f:
+    with open(wav_path, "rb") as f:
         audio_bytes = f.read()
 
     params = {
         "appkey":                          appkey,
-        "format":                          nls_format,
+        "format":                          "wav",
         "sample_rate":                     "16000",
         "enable_punctuation_prediction":   "true",
         "enable_inverse_text_normalization": "true",

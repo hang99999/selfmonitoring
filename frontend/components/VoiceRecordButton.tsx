@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Platform, Text, TouchableOpacity, View } from 'react-native';
 import {
   AudioQuality,
   getRecordingPermissionsAsync,
@@ -11,7 +11,7 @@ import {
 } from 'expo-audio';
 import { api } from '../src/api';
 
-const PRESET_16K_MONO = {
+const IOS_WAV_PRESET = {
   ...RecordingPresets.HIGH_QUALITY,
   extension: '.wav',
   sampleRate: 16000,
@@ -38,6 +38,25 @@ const PRESET_16K_MONO = {
   },
 };
 
+const ANDROID_AAC_PRESET = {
+  ...RecordingPresets.HIGH_QUALITY,
+  extension: '.m4a',
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 32000,
+  android: {
+    ...RecordingPresets.HIGH_QUALITY.android,
+    extension: '.m4a',
+    outputFormat: 'mpeg4' as const,
+    audioEncoder: 'aac' as const,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 32000,
+  },
+};
+
+const RECORDING_PRESET = Platform.OS === 'android' ? ANDROID_AAC_PRESET : IOS_WAV_PRESET;
+
 type RecordState = 'idle' | 'recording' | 'transcribing' | 'error';
 
 interface Props {
@@ -55,7 +74,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
   const [state, setState] = useState<RecordState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
-  const audioRecorder = useAudioRecorder(PRESET_16K_MONO);
+  const audioRecorder = useAudioRecorder(RECORDING_PRESET);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
@@ -123,6 +142,12 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
       const result = await api.uploadAudio(uri, userId);
       if (result.whisper_error) {
         setErrorMsg(`转写失败：${result.whisper_error}`);
+        setState('error');
+        return;
+      }
+
+      if (!result.transcript.trim()) {
+        setErrorMsg('没有识别到语音内容，请靠近麦克风后重试');
         setState('error');
         return;
       }
