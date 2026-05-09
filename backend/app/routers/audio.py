@@ -165,6 +165,19 @@ async def upload_audio(
     except Exception as e:
         asr_error = str(e)
 
+    print(
+        "[audio-upload]",
+        f"user_id={user_id}",
+        f"filename={file.filename!r}",
+        f"content_type={content_type!r}",
+        f"saved_ext={ext!r}",
+        f"size={len(content)}",
+        f"transcript_len={len(transcript or '')}",
+        f"transcript={transcript!r}",
+        f"asr_error={asr_error!r}",
+        flush=True,
+    )
+
     audio_record = AudioRecord(
         id=audio_id,
         user_id=user_id,
