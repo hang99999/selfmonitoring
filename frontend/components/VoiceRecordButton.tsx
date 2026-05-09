@@ -1,14 +1,42 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Text, TouchableOpacity, View } from 'react-native';
-import { useAudioRecorder, RecordingPresets, usePermissions } from 'expo-audio';
+import {
+  AudioQuality,
+  getRecordingPermissionsAsync,
+  IOSOutputFormat,
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+} from 'expo-audio';
+import { api } from '../src/api';
 
-// 阿里云 NLS 一句话识别要求 16K 单声道 AAC
 const PRESET_16K_MONO = {
   ...RecordingPresets.HIGH_QUALITY,
-  android: { ...RecordingPresets.HIGH_QUALITY.android, sampleRate: 16000, numberOfChannels: 1, bitRate: 32000 },
-  ios:     { ...RecordingPresets.HIGH_QUALITY.ios,     sampleRate: 16000, numberOfChannels: 1, bitRate: 32000 },
+  extension: '.wav',
+  sampleRate: 16000,
+  numberOfChannels: 1,
+  bitRate: 256000,
+  android: {
+    ...RecordingPresets.HIGH_QUALITY.android,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 256000,
+  },
+  ios: {
+    ...RecordingPresets.HIGH_QUALITY.ios,
+    extension: '.wav',
+    outputFormat: IOSOutputFormat.LINEARPCM,
+    audioQuality: AudioQuality.MAX,
+    sampleRate: 16000,
+    numberOfChannels: 1,
+    bitRate: 256000,
+    bitDepthHint: 16,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
 };
-import { api } from '../src/api';
 
 type RecordState = 'idle' | 'recording' | 'transcribing' | 'error';
 
@@ -27,7 +55,6 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
   const [state, setState] = useState<RecordState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
-  const [permissionStatus, requestPermission] = usePermissions();
   const audioRecorder = useAudioRecorder(PRESET_16K_MONO);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -39,65 +66,89 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.18, duration: 550, useNativeDriver: true }),
           Animated.timing(pulseAnim, { toValue: 1.0, duration: 550, useNativeDriver: true }),
-        ])
+        ]),
       );
       pulseLoop.current.start();
-      timerRef.current = setInterval(() => setSeconds(s => s + 1), 1000);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
     } else {
       pulseLoop.current?.stop();
       pulseAnim.setValue(1);
       if (timerRef.current) clearInterval(timerRef.current);
       if (state !== 'transcribing') setSeconds(0);
     }
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [state]);
+  }, [pulseAnim, state]);
 
-  const handlePress = async () => {
-    if (state === 'idle') {
-      if (permissionStatus?.status !== 'granted') {
-        const result = await requestPermission();
-        if (result.status !== 'granted') {
-          setErrorMsg('需要麦克风权限才能录音');
-          setState('error');
-          return;
-        }
-      }
-      setErrorMsg('');
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
-      setState('recording');
+  const ensureRecordingPermission = async () => {
+    const current = await getRecordingPermissionsAsync();
+    if (current.granted) return true;
 
-    } else if (state === 'recording') {
-      setState('transcribing');
-      await audioRecorder.stop();
-      const uri = audioRecorder.uri;
+    const requested = await requestRecordingPermissionsAsync();
+    return requested.granted;
+  };
 
-      if (!uri) {
-        setErrorMsg('录音失败，请重试');
+  const startRecording = async () => {
+    const hasPermission = await ensureRecordingPermission();
+    if (!hasPermission) {
+      setErrorMsg('需要麦克风权限才能录音');
+      setState('error');
+      return;
+    }
+
+    setErrorMsg('');
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+    });
+    await audioRecorder.prepareToRecordAsync();
+    audioRecorder.record();
+    setState('recording');
+  };
+
+  const stopAndTranscribe = async () => {
+    setState('transcribing');
+    await audioRecorder.stop();
+    const uri = audioRecorder.uri;
+
+    if (!uri) {
+      setErrorMsg('录音失败，请重试');
+      setState('error');
+      return;
+    }
+
+    try {
+      const result = await api.uploadAudio(uri, userId);
+      if (result.whisper_error) {
+        setErrorMsg(`转写失败：${result.whisper_error}`);
         setState('error');
         return;
       }
 
-      try {
-        const result = await api.uploadAudio(uri, userId);
-        if (result.whisper_error) {
-          // 音频已保存，但转写失败
-          setErrorMsg(`转写失败：${result.whisper_error}`);
-          setState('error');
-        } else {
-          onTranscript(result.transcript, result.audio_record_id);
-          setState('idle');
-        }
-      } catch {
-        setErrorMsg('上传失败，请检查网络后重试');
-        setState('error');
-      }
-
-    } else if (state === 'error') {
+      onTranscript(result.transcript, result.audio_record_id);
       setState('idle');
-      setErrorMsg('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      setErrorMsg(`上传失败：${message}`);
+      setState('error');
+    }
+  };
+
+  const handlePress = async () => {
+    try {
+      if (state === 'idle') {
+        await startRecording();
+      } else if (state === 'recording') {
+        await stopAndTranscribe();
+      } else if (state === 'error') {
+        setState('idle');
+        setErrorMsg('');
+      }
+    } catch {
+      setErrorMsg('录音出错，请重试');
+      setState('error');
     }
   };
 
@@ -106,7 +157,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
       <View className="items-center py-3">
         <View className="flex-row items-center gap-2">
           <ActivityIndicator size="small" color="#f97316" />
-          <Text className="text-sm text-gray-500">语音转写中…</Text>
+          <Text className="text-sm text-gray-500">语音转写中...</Text>
         </View>
       </View>
     );
@@ -121,9 +172,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
             state === 'recording' ? 'bg-red-500' : 'bg-gray-100'
           }`}
         >
-          <Text className="text-2xl">
-            {state === 'recording' ? '⏹' : state === 'error' ? '🔄' : '🎙️'}
-          </Text>
+          <Text className="text-2xl">{state === 'recording' ? '■' : state === 'error' ? '!' : '🎙️'}</Text>
         </Animated.View>
 
         {state === 'recording' && (
@@ -131,17 +180,11 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
             {formatTime(seconds)}
           </Text>
         )}
-        {state === 'idle' && (
-          <Text className="text-xs text-gray-400 mt-1.5">语音输入</Text>
-        )}
-        {state === 'error' && (
-          <Text className="text-xs text-orange-500 mt-1.5">点击重试</Text>
-        )}
+        {state === 'idle' && <Text className="text-xs text-gray-400 mt-1.5">语音输入</Text>}
+        {state === 'error' && <Text className="text-xs text-orange-500 mt-1.5">点击重试</Text>}
       </TouchableOpacity>
 
-      {errorMsg ? (
-        <Text className="text-xs text-red-400 mt-1 text-center px-4">{errorMsg}</Text>
-      ) : null}
+      {errorMsg ? <Text className="text-xs text-red-400 mt-1 text-center px-4">{errorMsg}</Text> : null}
     </View>
   );
 }

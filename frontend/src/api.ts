@@ -40,18 +40,27 @@ export const api = {
     }),
 
   uploadAudio: async (fileUri: string, userId = 'default_user'): Promise<AudioUploadResponse> => {
+    const lowerUri = fileUri.toLowerCase();
+    const isWav = lowerUri.includes('.wav');
+    const isM4a = lowerUri.includes('.m4a');
+    const name = isWav ? 'audio.wav' : isM4a ? 'audio.m4a' : 'audio.wav';
+    const type = isWav ? 'audio/wav' : isM4a ? 'audio/mp4' : 'audio/wav';
+
     const formData = new FormData();
     formData.append('file', {
       uri: fileUri,
-      name: 'audio.m4a',
-      type: 'audio/mp4',
+      name,
+      type,
     } as any);
     formData.append('user_id', userId);
     const res = await fetch(`${BASE}/api/audio/upload`, {
       method: 'POST',
       body: formData,
     });
-    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`API ${res.status}: ${detail || res.statusText}`);
+    }
     return res.json();
   },
 

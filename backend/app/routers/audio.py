@@ -27,7 +27,7 @@ NLS_ASR_URL   = "https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/asr"
 
 ALLOWED_MIME_TYPES = {
     "audio/mp4", "audio/m4a", "audio/x-m4a",
-    "audio/mpeg", "audio/wav", "audio/x-wav",
+    "audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave",
     "audio/webm", "audio/ogg",
     "application/octet-stream",
 }
@@ -35,6 +35,7 @@ ALLOWED_MIME_TYPES = {
 MIME_TO_EXT = {
     "audio/mp4": ".m4a", "audio/m4a": ".m4a", "audio/x-m4a": ".m4a",
     "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav",
+    "audio/wave": ".wav", "audio/vnd.wave": ".wav",
     "audio/webm": ".webm", "audio/ogg": ".ogg",
 }
 
