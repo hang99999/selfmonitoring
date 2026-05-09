@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
-from app.models import MoodRecord, User, PlannedActivity, LifeDomain
+from app.models import AudioRecord, MoodRecord, User, PlannedActivity, LifeDomain
 from app.schemas import MoodRecordResponse, RecordSubmitRequest, RecordConfirmRequest
 from app.llm_client import call_llm
 from app.prompts import safety_check_prompt, structured_extraction_prompt, empathic_feedback_prompt
@@ -193,6 +193,17 @@ async def submit_record(
         db.commit()
         db.refresh(record)
 
+        # 关联录音记录（如果有）
+        if req.audio_record_id:
+            audio_rec = db.query(AudioRecord).filter(
+                AudioRecord.id == req.audio_record_id,
+                AudioRecord.user_id == user_id,
+            ).first()
+            if audio_rec and audio_rec.mood_record_id is None:
+                audio_rec.mood_record_id = record.id
+                record.raw_audio_path = audio_rec.file_path
+                db.commit()
+
         background_tasks.add_task(
             _run_ai_background,
             record.id, req.text, user_id,
@@ -278,6 +289,16 @@ async def submit_record(
             planned.completed = True
             planned.completion_record_id = record.id
 
+    # 关联录音记录（如果有）
+    if req.audio_record_id:
+        audio_rec = db.query(AudioRecord).filter(
+            AudioRecord.id == req.audio_record_id,
+            AudioRecord.user_id == user_id,
+        ).first()
+        if audio_rec and audio_rec.mood_record_id is None:
+            audio_rec.mood_record_id = record.id
+            record.raw_audio_path = audio_rec.file_path
+
     db.commit()
     db.refresh(record)
 
@@ -291,11 +312,6 @@ async def submit_record(
 
     return record
 
-
-@router.post("/submit-voice")
-async def submit_voice():
-    """Placeholder for voice input."""
-    raise HTTPException(status_code=501, detail="Voice input coming soon")
 
 
 @router.put("/{record_id}/confirm", response_model=MoodRecordResponse)

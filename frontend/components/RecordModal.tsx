@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { api } from '../src/api';
 import type { MoodRecord, LifeDomain } from '../src/types';
+import VoiceRecordButton from './VoiceRecordButton';
 
 // Fixed domain list (names match DEFAULT_LIFE_DOMAINS on backend)
 const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '自我关怀', '日常责任', '其他'] as const;
@@ -62,6 +63,7 @@ export default function RecordModal({
   const [importance, setImportance] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [audioRecordId, setAudioRecordId] = useState<string | null>(null);
   // Domain selection: undefined = not loaded, null = "其他", string = domain ID
   const [domains, setDomains] = useState<LifeDomain[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string | null | undefined>(undefined);
@@ -77,6 +79,7 @@ export default function RecordModal({
     setError('');
     setSelectedDomainId(undefined);
     setDomains([]);
+    setAudioRecordId(null);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -87,7 +90,7 @@ export default function RecordModal({
     setError('');
     setStep('loading');
     try {
-      const rec = await api.submitRecord(text.trim(), userId, plannedActivityId);
+      const rec = await api.submitRecord(text.trim(), userId, plannedActivityId, undefined, audioRecordId ?? undefined);
       setRecord(rec);
       setActivity(rec.activity || '');
       setThought(rec.thought || '');
@@ -182,6 +185,20 @@ export default function RecordModal({
                 className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-800"
                 placeholderTextColor="#9ca3af"
                 autoFocus
+              />
+
+              {/* 语音输入 */}
+              <View className="flex-row items-center mt-4 mb-1 gap-3">
+                <View className="flex-1 h-px bg-gray-100" />
+                <Text className="text-xs text-gray-400">或用语音</Text>
+                <View className="flex-1 h-px bg-gray-100" />
+              </View>
+              <VoiceRecordButton
+                userId={userId}
+                onTranscript={(transcript, id) => {
+                  setText(transcript);
+                  setAudioRecordId(id);
+                }}
               />
 
               {error ? <Text className="text-red-500 text-sm mt-2">{error}</Text> : null}

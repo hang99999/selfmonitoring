@@ -3,6 +3,7 @@ import type {
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
   TreatmentProgressData, Supporter, PlannedActivitySupporter,
+  AudioUploadResponse,
 } from './types';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
@@ -25,6 +26,7 @@ export const api = {
     userId = 'default_user',
     plannedActivityId?: string,
     quickFields?: { activity: string; pleasure_score: number; importance_score: number },
+    audioRecordId?: string,
   ) =>
     request<MoodRecord>('/api/record/submit', {
       method: 'POST',
@@ -32,9 +34,26 @@ export const api = {
         text,
         user_id: userId,
         planned_activity_id: plannedActivityId,
+        ...(audioRecordId ? { audio_record_id: audioRecordId } : {}),
         ...quickFields,
       }),
     }),
+
+  uploadAudio: async (fileUri: string, userId = 'default_user'): Promise<AudioUploadResponse> => {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: fileUri,
+      name: 'audio.m4a',
+      type: 'audio/mp4',
+    } as any);
+    formData.append('user_id', userId);
+    const res = await fetch(`${BASE}/api/audio/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
 
   confirmRecord: (id: string, updates?: {
     activity?: string;

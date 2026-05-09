@@ -1,3 +1,10 @@
+export interface AudioUploadResponse {
+  audio_record_id: string;
+  transcript: string;
+  file_size_bytes?: number;
+  whisper_error?: string;
+}
+
 export interface MoodRecord {
   id: string;
   user_id: string;

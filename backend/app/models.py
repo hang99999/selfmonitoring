@@ -236,6 +236,21 @@ class PlannedActivitySupporter(Base):
     created_at = Column(DateTime, default=localnow)
 
 
+class AudioRecord(Base):
+    """用户录音记录：存储原始音频文件及 Whisper 转写结果，用于后续研究分析"""
+    __tablename__ = "audio_records"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    mood_record_id = Column(String, ForeignKey("mood_records.id"), nullable=True)  # 提交记录后关联
+    file_path = Column(String, nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    duration_sec = Column(Float, nullable=True)
+    transcript_text = Column(Text, nullable=True)    # Whisper 转写原文
+    whisper_model = Column(String, default="whisper-1")
+    created_at = Column(DateTime, default=localnow)
+
+
 class SystemPrompt(Base):
     """LLM prompt 模板 — 可在 pgAdmin 中直接编辑 content 字段来调整模型行为"""
     __tablename__ = "system_prompts"

@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from app.database import engine, SessionLocal
 from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress, PhaseConfig
-from app.routers import records, insights, stats, activities, chatbot, auth, supporters
+from app.routers import records, insights, stats, activities, chatbot, auth, supporters, audio
 from app.prompts import (
     SAFETY_CHECK_SYSTEM,
     STRUCTURED_EXTRACTION_SYSTEM,
@@ -104,6 +104,7 @@ app.include_router(activities.router)
 app.include_router(chatbot.router)
 app.include_router(auth.router)
 app.include_router(supporters.router)
+app.include_router(audio.router)
 
 
 @app.get("/")

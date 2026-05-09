@@ -14,6 +14,7 @@ class RecordSubmitRequest(BaseModel):
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
     life_domain_id: Optional[str] = None  # for quick-save path; None = "其他"
+    audio_record_id: Optional[str] = None  # 关联已上传的录音记录
 
 
 class RecordConfirmRequest(BaseModel):
@@ -291,3 +292,27 @@ class UnlockResponse(BaseModel):
     message: str
     participant_code: Optional[str] = None
     is_unlocked: bool = False
+
+
+# --- Audio Schemas ---
+
+class AudioUploadResponse(BaseModel):
+    audio_record_id: str
+    transcript: str
+    file_size_bytes: Optional[int] = None
+    whisper_error: Optional[str] = None  # 转写失败时说明原因，但录音仍已保存
+
+
+class AudioRecordResponse(BaseModel):
+    id: str
+    user_id: str
+    mood_record_id: Optional[str] = None
+    file_path: str
+    file_size_bytes: Optional[int] = None
+    duration_sec: Optional[float] = None
+    transcript_text: Optional[str] = None
+    whisper_model: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
