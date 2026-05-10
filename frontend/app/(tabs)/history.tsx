@@ -4,7 +4,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G } from 'react-native-svg';
+import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G, Rect } from 'react-native-svg';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
 import type { DayStats, WeekStats, MonthStats, InsightReport, DomainRadarItem } from '../../src/types';
@@ -338,6 +338,119 @@ function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: nu
   );
 }
 
+// ── Pleasure × Importance Scatter ────────────────────────────────────────────
+
+interface ScatterRecord {
+  activity?: string;
+  timestamp: string;
+  pleasure_score?: number | null;
+  importance_score?: number | null;
+}
+
+function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
+  const { width } = useWindowDimensions();
+  const chartW = width - 64;
+  const chartH = 260;
+  const PL = 34, PR = 18, PT = 24, PB = 34;
+  const innerW = chartW - PL - PR;
+  const innerH = chartH - PT - PB;
+  const scored = records.filter(r => r.pleasure_score != null && r.importance_score != null);
+  const gridLines = [0, 5, 10];
+
+  const clamp = (v: number) => Math.max(0, Math.min(10, v));
+  const xOf = (v: number) => PL + (clamp(v) / 10) * innerW;
+  const yOf = (v: number) => PT + innerH - (clamp(v) / 10) * innerH;
+
+  const quadrantCounts = scored.reduce(
+    (acc, r) => {
+      const pleasure = r.pleasure_score ?? 0;
+      const importance = r.importance_score ?? 0;
+      if (pleasure >= 5 && importance >= 5) acc.highBoth += 1;
+      else if (pleasure < 5 && importance >= 5) acc.importantHard += 1;
+      else if (pleasure >= 5 && importance < 5) acc.pleasantLight += 1;
+      else acc.lowBoth += 1;
+      return acc;
+    },
+    { highBoth: 0, importantHard: 0, pleasantLight: 0, lowBoth: 0 },
+  );
+
+  if (scored.length === 0) {
+    return (
+      <View className="items-center justify-center py-8">
+        <Text className="text-sm text-gray-400">今天还没有可绘制的愉悦感和重要性评分</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View>
+      <Svg width={chartW} height={chartH}>
+        <Rect x={PL} y={PT} width={innerW} height={innerH} fill="#fff7ed" opacity={0.38} />
+        <Rect x={xOf(5)} y={PT} width={innerW / 2} height={innerH / 2} fill="#ecfdf5" opacity={0.62} />
+        <Rect x={PL} y={PT} width={innerW / 2} height={innerH / 2} fill="#eef2ff" opacity={0.46} />
+        <Rect x={xOf(5)} y={yOf(5)} width={innerW / 2} height={innerH / 2} fill="#fff7ed" opacity={0.5} />
+        <Rect x={PL} y={yOf(5)} width={innerW / 2} height={innerH / 2} fill="#f9fafb" opacity={0.76} />
+
+        {gridLines.map(v => (
+          <G key={`grid-${v}`}>
+            <Line x1={xOf(v)} y1={PT} x2={xOf(v)} y2={PT + innerH} stroke="#e5e7eb" strokeWidth={v === 5 ? 1.4 : 1} />
+            <Line x1={PL} y1={yOf(v)} x2={PL + innerW} y2={yOf(v)} stroke="#e5e7eb" strokeWidth={v === 5 ? 1.4 : 1} />
+            <SvgText x={xOf(v)} y={chartH - 12} fontSize={9} fill="#9ca3af" textAnchor="middle">{v}</SvgText>
+            <SvgText x={PL - 8} y={yOf(v) + 3} fontSize={9} fill="#9ca3af" textAnchor="end">{v}</SvgText>
+          </G>
+        ))}
+
+        <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">愉悦感</SvgText>
+        <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>重要性</SvgText>
+
+        <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">重要但较难</SvgText>
+        <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">愉悦且重要</SvgText>
+        <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">低愉悦低重要</SvgText>
+        <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">愉悦补能</SvgText>
+
+        {scored.map((r, i) => {
+          const x = xOf(r.pleasure_score ?? 0);
+          const y = yOf(r.importance_score ?? 0);
+          return (
+            <G key={`${r.timestamp}-${i}`}>
+              <Circle cx={x} cy={y} r={8} fill="#fb923c" opacity={0.22} />
+              <Circle cx={x} cy={y} r={4.5} fill="#f97316" />
+              <SvgText x={x} y={y - 10} fontSize={9} fill="#374151" textAnchor="middle" fontWeight="bold">{i + 1}</SvgText>
+            </G>
+          );
+        })}
+      </Svg>
+
+      <View className="flex-row flex-wrap gap-2 mb-3">
+        {[
+          ['愉悦且重要', quadrantCounts.highBoth, '#16a34a'],
+          ['重要但较难', quadrantCounts.importantHard, '#6366f1'],
+          ['愉悦补能', quadrantCounts.pleasantLight, '#f97316'],
+          ['低愉悦低重要', quadrantCounts.lowBoth, '#9ca3af'],
+        ].map(([label, count, color]) => (
+          <View key={label} className="px-2 py-1 rounded-lg bg-gray-50 flex-row items-center">
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color as string }} />
+            <Text className="text-xs text-gray-500 ml-1">{label} {count}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View className="border-t border-gray-100 pt-3">
+        {scored.slice(0, 6).map((r, i) => (
+          <View key={`${r.timestamp}-legend-${i}`} className="flex-row items-center mb-1.5">
+            <Text className="text-xs font-bold text-orange-500 w-5">{i + 1}</Text>
+            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{r.activity || '活动'}</Text>
+            <Text className="text-xs text-gray-400 ml-2">愉悦 {r.pleasure_score} · 重要 {r.importance_score}</Text>
+          </View>
+        ))}
+        {scored.length > 6 && (
+          <Text className="text-xs text-gray-400 mt-1">还有 {scored.length - 6} 条记录可在下方今日记录中查看</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
 // ── Radar Chart ──────────────────────────────────────────────────────────────
 
 // Short display labels for axes (to fit tight spaces)
@@ -650,6 +763,12 @@ export default function HistoryScreen() {
                     }
                     showEvery={1}
                   />
+                </View>
+
+                <View className="bg-white rounded-2xl p-4 mb-4">
+                  <Text className="text-sm font-semibold text-gray-700 mb-1">今日活动分布</Text>
+                  <Text className="text-xs text-gray-400 mb-3">每个点代表一条活动记录，位置由愉悦感和重要性评分决定</Text>
+                  <PleasureImportanceScatter records={dayStats.records} />
                 </View>
 
                 {dayStats.records.length > 0 && (
