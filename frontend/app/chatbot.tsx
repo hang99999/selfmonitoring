@@ -1221,7 +1221,7 @@ export default function ChatbotScreen() {
             keyExtractor={(_, i) => String(i)}
             contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-            ListFooterComponent={
+            ListHeaderComponent={
               currentIntent === 'phase:setup'
                 ? (
                   <S2InlineFlow
