@@ -762,6 +762,13 @@ async def get_treatment_progress(
 
     phase = progress.phase
     cycle = progress.review_cycle_count
+    phase_scatter_start = None
+    phase_scatter_end = None
+    if phase == "setup":
+        phase_scatter_start = (
+            progress.phase_unlocked_at - timedelta(days=max(1, cfg.intro_days))
+        ).strftime("%Y-%m-%d")
+        phase_scatter_end = now.strftime("%Y-%m-%d")
 
     PHASE_LABELS = {
         "intro":        "阶段1 · 启动监测",
@@ -859,6 +866,8 @@ async def get_treatment_progress(
         "active_trigger": active_trigger,
         "recently_triggered": recently_triggered,
         "phase_session_done": phase_session_done,
+        "phase_scatter_start_date": phase_scatter_start,
+        "phase_scatter_end_date": phase_scatter_end,
     }
 
 

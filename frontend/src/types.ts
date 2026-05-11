@@ -134,6 +134,8 @@ export interface TreatmentProgressData {
   active_trigger?: string | null;
   recently_triggered?: string[];
   phase_session_done?: boolean;
+  phase_scatter_start_date?: string | null;
+  phase_scatter_end_date?: string | null;
 }
 
 export interface UserState {

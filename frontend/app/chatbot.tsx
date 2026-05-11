@@ -2,15 +2,16 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, ScrollView,
   KeyboardAvoidingView, Platform, Modal, Pressable,
-  ActivityIndicator, Alert,
+  ActivityIndicator, Alert, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
 import { useUserId } from '../src/userStore';
-import type { ChatMessage, ChatSession, UserState, TreatmentProgressData, LifeDomain } from '../src/types';
+import type { ChatMessage, ChatSession, UserState, TreatmentProgressData, LifeDomain, MoodRecord, Value, Activity } from '../src/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -184,128 +185,283 @@ function Bubble({ msg }: { msg: ChatMessage }) {
   );
 }
 
-// ── S2 Value Modal ────────────────────────────────────────────────────────────
-function S2ValueModal({
-  userId, onClose, onSubmitMessage,
-}: { userId: string; onClose: () => void; onSubmitMessage: (msg: string) => void }) {
-  const [domains, setDomains] = useState<LifeDomain[]>([]);
-  const [selected, setSelected] = useState<LifeDomain | null>(null);
-  const [text, setText] = useState('');
-  const [saving, setSaving] = useState(false);
+// ── S2 inline cards ──────────────────────────────────────────────────────────
+
+type S2ActionMessage = (msg: string) => void;
+
+function S2ScatterCard({ progress, userId }: { progress: TreatmentProgressData | null; userId: string }) {
+  const [records, setRecords] = useState<MoodRecord[]>([]);
+  const [loading, setLoading] = useState(false);
+  const { width } = useWindowDimensions();
 
   useEffect(() => {
-    api.getDomains(userId).then(setDomains).catch(() => {});
-  }, [userId]);
+    if (!progress?.phase_scatter_start_date || !progress.phase_scatter_end_date) return;
+    setLoading(true);
+    api.listRecordsRange(progress.phase_scatter_start_date, progress.phase_scatter_end_date, userId, 80)
+      .then(setRecords)
+      .catch(() => setRecords([]))
+      .finally(() => setLoading(false));
+  }, [progress?.phase_scatter_start_date, progress?.phase_scatter_end_date, userId]);
 
-  const submit = async () => {
-    if (!selected || !text.trim() || saving) return;
-    setSaving(true);
-    try {
-      await api.createValue(selected.id, text.trim(), userId);
-      onSubmitMessage(`【已填写价值观】领域：${selected.name}，价值观：${text.trim()}`);
-      onClose();
-    } finally { setSaving(false); }
-  };
+  const chartW = Math.max(280, width - 64);
+  const chartH = 230;
+  const PL = 34, PR = 18, PT = 24, PB = 34;
+  const innerW = chartW - PL - PR;
+  const innerH = chartH - PT - PB;
+  const scored = records
+    .filter(r => r.pleasure_score != null && r.importance_score != null)
+    .map((record, index) => ({ record, index: index + 1 }));
+
+  const clamp = (v: number) => Math.max(0, Math.min(10, v));
+  const xOf = (v: number) => PL + (clamp(v) / 10) * innerW;
+  const yOf = (v: number) => PT + innerH - (clamp(v) / 10) * innerH;
+  const count = (pred: (r: MoodRecord) => boolean) => scored.filter(({ record }) => pred(record)).length;
+  const highBoth = count(r => (r.pleasure_score ?? 0) >= 5 && (r.importance_score ?? 0) >= 5);
+  const pleasantOnly = count(r => (r.pleasure_score ?? 0) >= 5 && (r.importance_score ?? 0) < 5);
+  const importantOnly = count(r => (r.pleasure_score ?? 0) < 5 && (r.importance_score ?? 0) >= 5);
+  const lowBoth = Math.max(0, scored.length - highBoth - pleasantOnly - importantOnly);
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable className="flex-1" onPress={onClose} />
-      <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
-        <Text className="text-base font-bold text-gray-800 mb-4">填写价值观</Text>
-        <Text className="text-xs text-gray-500 mb-2">选择生活领域</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-          <View className="flex-row gap-2 pb-1">
-            {domains.map(d => (
-              <TouchableOpacity
-                key={d.id}
-                onPress={() => setSelected(d)}
-                className={`px-4 py-2 rounded-xl border ${selected?.id === d.id ? 'bg-indigo-500 border-indigo-500' : 'bg-white border-gray-200'}`}
-              >
-                <Text className={`text-sm ${selected?.id === d.id ? 'text-white font-medium' : 'text-gray-600'}`}>{d.name}</Text>
-              </TouchableOpacity>
+    <View className="bg-white rounded-2xl border border-orange-100 px-4 py-4 mb-3">
+      <Text className="text-xs font-semibold text-orange-500 mb-1">上一阶段以来的活动分布</Text>
+      <Text className="text-xs text-gray-400 mb-3">每个点是一条活动记录，横轴是愉悦感，纵轴是重要性。</Text>
+      {loading ? (
+        <View className="py-8 items-center"><ActivityIndicator color="#f97316" /></View>
+      ) : scored.length === 0 ? (
+        <View className="py-8 items-center">
+          <Text className="text-sm text-gray-400">当前范围还没有可绘制的评分记录</Text>
+        </View>
+      ) : (
+        <>
+          <Svg width={chartW} height={chartH}>
+            <Rect x={PL} y={PT} width={innerW} height={innerH} fill="#f9fafb" />
+            <Rect x={xOf(5)} y={PT} width={innerW / 2} height={innerH / 2} fill="#ecfdf5" opacity={0.75} />
+            <Rect x={PL} y={PT} width={innerW / 2} height={innerH / 2} fill="#eef2ff" opacity={0.58} />
+            <Rect x={xOf(5)} y={yOf(5)} width={innerW / 2} height={innerH / 2} fill="#fff7ed" opacity={0.7} />
+            {[0, 5, 10].map(v => (
+              <G key={v}>
+                <Line x1={xOf(v)} y1={PT} x2={xOf(v)} y2={PT + innerH} stroke="#e5e7eb" strokeWidth={v === 5 ? 1.4 : 1} />
+                <Line x1={PL} y1={yOf(v)} x2={PL + innerW} y2={yOf(v)} stroke="#e5e7eb" strokeWidth={v === 5 ? 1.4 : 1} />
+                <SvgText x={xOf(v)} y={chartH - 12} fontSize={9} fill="#9ca3af" textAnchor="middle">{v}</SvgText>
+                <SvgText x={PL - 8} y={yOf(v) + 3} fontSize={9} fill="#9ca3af" textAnchor="end">{v}</SvgText>
+              </G>
+            ))}
+            <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">愉悦感</SvgText>
+            <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>重要性</SvgText>
+            {scored.map(({ record, index }) => {
+              const x = xOf(record.pleasure_score ?? 0);
+              const y = yOf(record.importance_score ?? 0);
+              return (
+                <G key={`${record.id}-${index}`}>
+                  <Circle cx={x} cy={y} r={7} fill="#fb923c" opacity={0.2} />
+                  <Circle cx={x} cy={y} r={4.5} fill="#f97316" />
+                  <SvgText x={x} y={y - 10} fontSize={9} fill="#374151" textAnchor="middle" fontWeight="bold">{index}</SvgText>
+                </G>
+              );
+            })}
+          </Svg>
+          <View className="flex-row flex-wrap gap-2">
+            {[
+              ['高愉悦高重要', highBoth, '#16a34a'],
+              ['低愉悦高重要', importantOnly, '#6366f1'],
+              ['高愉悦低重要', pleasantOnly, '#f97316'],
+              ['低愉悦低重要', lowBoth, '#9ca3af'],
+            ].map(([label, n, color]) => (
+              <View key={String(label)} className="px-2 py-1 rounded-lg bg-gray-50 flex-row items-center">
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: String(color) }} />
+                <Text className="text-xs text-gray-500 ml-1">{label} {n}</Text>
+              </View>
             ))}
           </View>
-        </ScrollView>
-        <Text className="text-xs text-gray-500 mb-2">你在这个领域里真正在乎什么？</Text>
-        <TextInput
-          value={text} onChangeText={setText} autoFocus
-          placeholder="例如：做一个关心家人的人"
-          placeholderTextColor="#9ca3af"
-          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
-        />
-        <TouchableOpacity
-          onPress={submit}
-          disabled={!selected || !text.trim() || saving}
-          className="w-full py-4 bg-indigo-500 rounded-2xl items-center"
-          style={{ opacity: (!selected || !text.trim() || saving) ? 0.4 : 1 }}
-        >
-          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">提交给小暖看看</Text>}
-        </TouchableOpacity>
-      </View>
-    </Modal>
+        </>
+      )}
+    </View>
   );
 }
 
-// ── S2 Activity Modal ─────────────────────────────────────────────────────────
-function S2ActivityModal({
-  userId, onClose, onSubmitMessage,
-}: { userId: string; onClose: () => void; onSubmitMessage: (msg: string) => void }) {
+function S2DomainCard({
+  userId, selected, onSelect, onSubmitMessage,
+}: { userId: string; selected: LifeDomain | null; onSelect: (d: LifeDomain) => void; onSubmitMessage: S2ActionMessage }) {
   const [domains, setDomains] = useState<LifeDomain[]>([]);
-  const [selected, setSelected] = useState<LifeDomain | null>(null);
-  const [text, setText] = useState('');
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.getDomains(userId).then(setDomains).catch(() => {});
+    api.getDomains(userId).then(setDomains).catch(() => setDomains([]));
   }, [userId]);
 
-  const submit = async () => {
-    if (!text.trim() || saving) return;
-    setSaving(true);
-    try {
-      await api.createActivity({ name: text.trim(), life_domain_id: selected?.id, user_id: userId });
-      const suffix = selected ? `（领域：${selected.name}）` : '';
-      onSubmitMessage(`【已填写活动】${text.trim()}${suffix}`);
-      onClose();
-    } finally { setSaving(false); }
+  const choose = (domain: LifeDomain) => {
+    onSelect(domain);
+    onSubmitMessage(`我想先从「${domain.name}」这个生活领域开始`);
   };
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable className="flex-1" onPress={onClose} />
-      <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
-        <Text className="text-base font-bold text-gray-800 mb-4">填写活动</Text>
-        <Text className="text-xs text-gray-500 mb-2">选择生活领域（可选）</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-          <View className="flex-row gap-2 pb-1">
-            {domains.map(d => (
-              <TouchableOpacity
-                key={d.id}
-                onPress={() => setSelected(selected?.id === d.id ? null : d)}
-                className={`px-4 py-2 rounded-xl border ${selected?.id === d.id ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'}`}
-              >
-                <Text className={`text-sm ${selected?.id === d.id ? 'text-white font-medium' : 'text-gray-600'}`}>{d.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-        <Text className="text-xs text-gray-500 mb-2">这个活动具体是什么？</Text>
-        <TextInput
-          value={text} onChangeText={setText} autoFocus
-          placeholder="例如：每周二晚上打20分钟羽毛球"
-          placeholderTextColor="#9ca3af"
-          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
-        />
-        <TouchableOpacity
-          onPress={submit}
-          disabled={!text.trim() || saving}
-          className="w-full py-4 bg-orange-500 rounded-2xl items-center"
-          style={{ opacity: (!text.trim() || saving) ? 0.4 : 1 }}
-        >
-          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">提交给小暖看看</Text>}
-        </TouchableOpacity>
+    <View className="bg-white rounded-2xl border border-indigo-100 px-4 py-4 mb-3">
+      <Text className="text-xs font-semibold text-indigo-500 mb-1">选择一个生活领域</Text>
+      <Text className="text-xs text-gray-400 mb-3">先从一个方向开始就好，之后还可以继续补充。</Text>
+      <View className="flex-row flex-wrap gap-2">
+        {domains.map(d => {
+          const active = selected?.id === d.id;
+          return (
+            <TouchableOpacity
+              key={d.id}
+              onPress={() => choose(d)}
+              className="px-3 py-2 rounded-xl border"
+              style={{ backgroundColor: active ? '#6366f1' : '#fff', borderColor: active ? '#6366f1' : '#e5e7eb' }}
+            >
+              <Text style={{ color: active ? '#fff' : '#4b5563' }} className="text-sm font-medium">{d.name}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-    </Modal>
+    </View>
+  );
+}
+
+function S2ValueCard({
+  userId, domain, savedValue, onSaved, onSubmitMessage, onProgressRefresh,
+}: {
+  userId: string;
+  domain: LifeDomain | null;
+  savedValue: Value | null;
+  onSaved: (v: Value) => void;
+  onSubmitMessage: S2ActionMessage;
+  onProgressRefresh: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!domain || !text.trim() || saving) return;
+    setSaving(true);
+    try {
+      const value = await api.createValue(domain.id, text.trim(), userId);
+      onSaved(value);
+      onProgressRefresh();
+      onSubmitMessage(`【已填写价值观】领域：${domain.name}，价值观：${text.trim()}`);
+      setText('');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <View className="bg-white rounded-2xl border border-indigo-100 px-4 py-4 mb-3" style={{ opacity: domain ? 1 : 0.5 }}>
+      <Text className="text-xs font-semibold text-indigo-500 mb-1">写下这个领域里的价值观</Text>
+      <Text className="text-xs text-gray-400 mb-3">{domain ? `当前领域：${domain.name}` : '先选择一个生活领域'}</Text>
+      {savedValue ? (
+        <View className="bg-indigo-50 rounded-xl px-3 py-3">
+          <Text className="text-xs text-indigo-400 mb-1">已保存</Text>
+          <Text className="text-sm text-gray-700">{savedValue.content}</Text>
+        </View>
+      ) : (
+        <>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            editable={!!domain && !saving}
+            placeholder="例如：照顾好自己的身体和状态"
+            placeholderTextColor="#9ca3af"
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
+          />
+          <TouchableOpacity
+            onPress={submit}
+            disabled={!domain || !text.trim() || saving}
+            className="w-full py-3 bg-indigo-500 rounded-xl items-center"
+            style={{ opacity: (!domain || !text.trim() || saving) ? 0.4 : 1 }}
+          >
+            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">保存价值观</Text>}
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+}
+
+function S2ActivityCard({
+  userId, domain, value, savedActivity, onSaved, onSubmitMessage, onProgressRefresh,
+}: {
+  userId: string;
+  domain: LifeDomain | null;
+  value: Value | null;
+  savedActivity: Activity | null;
+  onSaved: (a: Activity) => void;
+  onSubmitMessage: S2ActionMessage;
+  onProgressRefresh: () => void;
+}) {
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    if (!text.trim() || !domain || !value || saving) return;
+    setSaving(true);
+    try {
+      const activity = await api.createActivity({
+        name: text.trim(),
+        life_domain_id: domain.id,
+        value_id: value.id,
+        user_id: userId,
+      });
+      onSaved(activity);
+      onProgressRefresh();
+      onSubmitMessage(`【已填写活动】${text.trim()}（领域：${domain.name}）`);
+      setText('');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <View className="bg-white rounded-2xl border border-orange-100 px-4 py-4 mb-3" style={{ opacity: value ? 1 : 0.5 }}>
+      <Text className="text-xs font-semibold text-orange-500 mb-1">添加一个可以开始的活动</Text>
+      <Text className="text-xs text-gray-400 mb-3">最好小到这周真的能做一次。</Text>
+      {savedActivity ? (
+        <View className="bg-orange-50 rounded-xl px-3 py-3">
+          <Text className="text-xs text-orange-400 mb-1">已加入活动库</Text>
+          <Text className="text-sm text-gray-700">{savedActivity.name}</Text>
+        </View>
+      ) : (
+        <>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            editable={!!value && !saving}
+            placeholder="例如：周三晚上散步15分钟"
+            placeholderTextColor="#9ca3af"
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
+          />
+          <TouchableOpacity
+            onPress={submit}
+            disabled={!value || !text.trim() || saving}
+            className="w-full py-3 bg-orange-500 rounded-xl items-center"
+            style={{ opacity: (!value || !text.trim() || saving) ? 0.4 : 1 }}
+          >
+            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">加入活动库</Text>}
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+}
+
+function S2InlineFlow({
+  progress, userId, onSubmitMessage, onProgressRefresh,
+}: { progress: TreatmentProgressData | null; userId: string; onSubmitMessage: S2ActionMessage; onProgressRefresh: () => void }) {
+  const [selectedDomain, setSelectedDomain] = useState<LifeDomain | null>(null);
+  const [savedValue, setSavedValue] = useState<Value | null>(null);
+  const [savedActivity, setSavedActivity] = useState<Activity | null>(null);
+
+  return (
+    <View className="mt-1 mb-2">
+      <S2ScatterCard progress={progress} userId={userId} />
+      <S2DomainCard userId={userId} selected={selectedDomain} onSelect={(d) => { setSelectedDomain(d); setSavedValue(null); setSavedActivity(null); }} onSubmitMessage={onSubmitMessage} />
+      <S2ValueCard userId={userId} domain={selectedDomain} savedValue={savedValue} onSaved={setSavedValue} onSubmitMessage={onSubmitMessage} onProgressRefresh={onProgressRefresh} />
+      <S2ActivityCard userId={userId} domain={selectedDomain} value={savedValue} savedActivity={savedActivity} onSaved={setSavedActivity} onSubmitMessage={onSubmitMessage} onProgressRefresh={onProgressRefresh} />
+      {savedActivity && (
+        <View className="bg-green-50 rounded-2xl border border-green-100 px-4 py-3 mb-3">
+          <Text className="text-xs font-semibold text-green-600 mb-1">下一步</Text>
+          <Text className="text-xs text-gray-600 leading-relaxed">活动已经进活动库了。接下来可以回到主页点“计划活动”，把它安排到具体日期和时间里。</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -786,8 +942,6 @@ export default function ChatbotScreen() {
   const [detectedActivity, setDetectedActivity] = useState<{ type: 'completed' | 'planned'; name: string } | null>(null);
   const [showRecord, setShowRecord] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
-  const [showS2Value, setShowS2Value] = useState(false);
-  const [showS2Activity, setShowS2Activity] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   // ── Core send ───────────────────────────────────────────────────────────────
@@ -1024,6 +1178,18 @@ export default function ChatbotScreen() {
             keyExtractor={(_, i) => String(i)}
             contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            ListFooterComponent={
+              currentIntent === 'phase:setup'
+                ? (
+                  <S2InlineFlow
+                    progress={treatmentProgress}
+                    userId={userId}
+                    onSubmitMessage={_sendMessage}
+                    onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
+                  />
+                )
+                : null
+            }
             ListEmptyComponent={
               <View className="items-center pt-16">
                 <XiaoNuan size={64} />
@@ -1043,23 +1209,6 @@ export default function ChatbotScreen() {
               onPlan={() => { setDetectedActivity(null); setShowPlan(true); }}
               onDismiss={() => setDetectedActivity(null)}
             />
-          )}
-
-          {currentIntent === 'phase:setup' && (
-            <View className="flex-row gap-2 px-4 py-2 bg-indigo-50 border-t border-indigo-100">
-              <TouchableOpacity
-                onPress={() => setShowS2Value(true)}
-                className="flex-1 py-2.5 bg-indigo-100 rounded-xl items-center"
-              >
-                <Text className="text-xs text-indigo-700 font-medium">💡 填写价值观</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setShowS2Activity(true)}
-                className="flex-1 py-2.5 bg-orange-100 rounded-xl items-center"
-              >
-                <Text className="text-xs text-orange-700 font-medium">＋ 填写活动</Text>
-              </TouchableOpacity>
-            </View>
           )}
 
           <View className="flex-row items-end gap-2 px-4 py-3 bg-white border-t border-gray-100">
@@ -1107,20 +1256,6 @@ export default function ChatbotScreen() {
         <QuickPlanModal
           defaultName={detectedActivity?.name ?? ''}
           onClose={() => setShowPlan(false)}
-        />
-      )}
-      {showS2Value && (
-        <S2ValueModal
-          userId={userId}
-          onClose={() => setShowS2Value(false)}
-          onSubmitMessage={_sendMessage}
-        />
-      )}
-      {showS2Activity && (
-        <S2ActivityModal
-          userId={userId}
-          onClose={() => setShowS2Activity(false)}
-          onSubmitMessage={_sendMessage}
         />
       )}
     </SafeAreaView>
