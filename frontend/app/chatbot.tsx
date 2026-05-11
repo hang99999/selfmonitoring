@@ -1215,25 +1215,24 @@ export default function ChatbotScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
+          {currentIntent === 'phase:setup' && (
+            <View className="px-4 pt-3 bg-orange-50">
+              <S2InlineFlow
+                progress={treatmentProgress}
+                userId={userId}
+                phaseStep={currentPhaseStep}
+                onSubmitMessage={_sendMessage}
+                onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
+              />
+            </View>
+          )}
+
           <FlatList
             ref={listRef}
             data={allItems}
             keyExtractor={(_, i) => String(i)}
             contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-            ListHeaderComponent={
-              currentIntent === 'phase:setup'
-                ? (
-                  <S2InlineFlow
-                    progress={treatmentProgress}
-                    userId={userId}
-                    phaseStep={currentPhaseStep}
-                    onSubmitMessage={_sendMessage}
-                    onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
-                  />
-                )
-                : null
-            }
             ListEmptyComponent={
               <View className="items-center pt-16">
                 <XiaoNuan size={64} />
