@@ -372,25 +372,35 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
   const PL = 34, PR = 18, PT = 24, PB = 34;
   const innerW = chartW - PL - PR;
   const innerH = chartH - PT - PB;
-  const scored = records.filter(r => r.pleasure_score != null && r.importance_score != null);
+  const scored = records
+    .filter(r => r.pleasure_score != null && r.importance_score != null)
+    .map((record, index) => ({ record, index: index + 1 }));
   const gridLines = [0, 5, 10];
 
   const clamp = (v: number) => Math.max(0, Math.min(10, v));
   const xOf = (v: number) => PL + (clamp(v) / 10) * innerW;
   const yOf = (v: number) => PT + innerH - (clamp(v) / 10) * innerH;
 
-  const quadrantCounts = scored.reduce(
-    (acc, r) => {
-      const pleasure = r.pleasure_score ?? 0;
-      const importance = r.importance_score ?? 0;
-      if (pleasure >= 5 && importance >= 5) acc.highBoth += 1;
-      else if (pleasure < 5 && importance >= 5) acc.importantHard += 1;
-      else if (pleasure >= 5 && importance < 5) acc.pleasantLight += 1;
-      else acc.lowBoth += 1;
-      return acc;
-    },
-    { highBoth: 0, importantHard: 0, pleasantLight: 0, lowBoth: 0 },
-  );
+  const quadrants = [
+    { key: 'highBoth', label: '高愉悦高重要', color: '#16a34a' },
+    { key: 'pleasantLowImportance', label: '高愉悦低重要', color: '#f97316' },
+    { key: 'lowPleasureImportant', label: '低愉悦高重要', color: '#6366f1' },
+    { key: 'lowBoth', label: '低愉悦低重要', color: '#9ca3af' },
+  ] as const;
+
+  const grouped = quadrants.reduce<Record<typeof quadrants[number]['key'], typeof scored>>((acc, q) => {
+    acc[q.key] = [];
+    return acc;
+  }, {} as Record<typeof quadrants[number]['key'], typeof scored>);
+
+  scored.forEach(item => {
+    const pleasure = item.record.pleasure_score ?? 0;
+    const importance = item.record.importance_score ?? 0;
+    if (pleasure >= 5 && importance >= 5) grouped.highBoth.push(item);
+    else if (pleasure >= 5 && importance < 5) grouped.pleasantLowImportance.push(item);
+    else if (pleasure < 5 && importance >= 5) grouped.lowPleasureImportant.push(item);
+    else grouped.lowBoth.push(item);
+  });
 
   if (scored.length === 0) {
     return (
@@ -421,49 +431,48 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
         <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">愉悦感</SvgText>
         <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>重要性</SvgText>
 
-        <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">重要但较难</SvgText>
-        <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">愉悦且重要</SvgText>
+        <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">低愉悦高重要</SvgText>
+        <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">高愉悦高重要</SvgText>
         <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">低愉悦低重要</SvgText>
-        <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">愉悦补能</SvgText>
+        <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">高愉悦低重要</SvgText>
 
-        {scored.map((r, i) => {
-          const x = xOf(r.pleasure_score ?? 0);
-          const y = yOf(r.importance_score ?? 0);
+        {scored.map(({ record, index }) => {
+          const x = xOf(record.pleasure_score ?? 0);
+          const y = yOf(record.importance_score ?? 0);
           return (
-            <G key={`${r.timestamp}-${i}`}>
+            <G key={`${record.timestamp}-${index}`}>
               <Circle cx={x} cy={y} r={8} fill="#fb923c" opacity={0.22} />
               <Circle cx={x} cy={y} r={4.5} fill="#f97316" />
-              <SvgText x={x} y={y - 10} fontSize={9} fill="#374151" textAnchor="middle" fontWeight="bold">{i + 1}</SvgText>
+              <SvgText x={x} y={y - 10} fontSize={9} fill="#374151" textAnchor="middle" fontWeight="bold">{index}</SvgText>
             </G>
           );
         })}
       </Svg>
 
       <View className="flex-row flex-wrap gap-2 mb-3">
-        {[
-          ['愉悦且重要', quadrantCounts.highBoth, '#16a34a'],
-          ['重要但较难', quadrantCounts.importantHard, '#6366f1'],
-          ['愉悦补能', quadrantCounts.pleasantLight, '#f97316'],
-          ['低愉悦低重要', quadrantCounts.lowBoth, '#9ca3af'],
-        ].map(([label, count, color]) => (
-          <View key={label} className="px-2 py-1 rounded-lg bg-gray-50 flex-row items-center">
-            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: color as string }} />
-            <Text className="text-xs text-gray-500 ml-1">{label} {count}</Text>
+        {quadrants.map(q => (
+          <View key={q.key} className="px-2 py-1 rounded-lg bg-gray-50 flex-row items-center">
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: q.color }} />
+            <Text className="text-xs text-gray-500 ml-1">{q.label} {grouped[q.key].length}</Text>
           </View>
         ))}
       </View>
 
       <View className="border-t border-gray-100 pt-3">
-        {scored.slice(0, 6).map((r, i) => (
-          <View key={`${r.timestamp}-legend-${i}`} className="flex-row items-center mb-1.5">
-            <Text className="text-xs font-bold text-orange-500 w-5">{i + 1}</Text>
-            <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{r.activity || '活动'}</Text>
-            <Text className="text-xs text-gray-400 ml-2">愉悦 {r.pleasure_score} · 重要 {r.importance_score}</Text>
+        {quadrants.map(q => (
+          <View key={`${q.key}-records`} className="mb-2">
+            <Text className="text-xs font-semibold text-gray-500 mb-1">{q.label}</Text>
+            {grouped[q.key].length > 0 ? grouped[q.key].map(({ record, index }) => (
+              <View key={`${record.timestamp}-legend-${index}`} className="flex-row items-center mb-1.5">
+                <Text className="text-xs font-bold text-orange-500 w-5">{index}</Text>
+                <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || '活动'}</Text>
+                <Text className="text-xs text-gray-400 ml-2">愉悦 {record.pleasure_score} · 重要 {record.importance_score}</Text>
+              </View>
+            )) : (
+              <Text className="text-xs text-gray-300 mb-1.5">暂无活动</Text>
+            )}
           </View>
         ))}
-        {scored.length > 6 && (
-          <Text className="text-xs text-gray-400 mt-1">还有 {scored.length - 6} 条记录可在记录列表中查看</Text>
-        )}
       </View>
     </View>
   );
@@ -711,7 +720,6 @@ export default function HistoryScreen() {
   };
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-  const weekRange = getCurrentWeekRange();
 
   const mainTabs: { key: MainTab; label: string }[] = [
     { key: 'stats', label: '📊 数据' },
@@ -872,7 +880,7 @@ export default function HistoryScreen() {
                 <View className="bg-white rounded-2xl p-4 mb-4">
                   <Text className="text-sm font-semibold text-gray-700 mb-1">本周活动分布</Text>
                   <Text className="text-xs text-gray-400 mb-3">
-                    {weekRange.startDate} 至 {weekRange.endDate} · 用来帮助安排本周剩下的活动
+                    你可以增加愉悦且重要的活动，并平衡高愉悦低重要和低愉悦高重要的活动，减少低愉悦低重要的活动。
                   </Text>
                   <PleasureImportanceScatter records={weekRecords} />
                 </View>
