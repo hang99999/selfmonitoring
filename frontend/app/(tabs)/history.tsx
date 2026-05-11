@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
-  useWindowDimensions,
+  useWindowDimensions, PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G, Rect } from 'react-native-svg';
@@ -252,17 +252,6 @@ function AssessmentPanel() {
   return null;
 }
 
-// ── Bar component ─────────────────────────────────────────────────────────────
-
-function Bar({ value, max = 10, color = '#fb923c' }: { value: number | null | undefined; max?: number; color?: string }) {
-  const pct = value ? Math.round((value / max) * 100) : 0;
-  return (
-    <View className="h-2 bg-gray-100 rounded-full flex-1">
-      {pct > 0 && <View className="h-2 rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />}
-    </View>
-  );
-}
-
 const cardStyle = { backgroundColor: '#ffffff', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } };
 
 function formatLocalDate(d: Date) {
@@ -407,34 +396,66 @@ function MoodLineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?
 function DailyMoodCard({
   value, saving, onSelect,
 }: { value: number | null; saving: boolean; onSelect: (score: number) => void }) {
+  const [trackWidth, setTrackWidth] = useState(1);
+  const [draftScore, setDraftScore] = useState(value ?? 5);
+
+  useEffect(() => {
+    if (value != null) setDraftScore(value);
+  }, [value]);
+
+  const clampScore = (score: number) => Math.max(0, Math.min(10, score));
+  const scoreFromX = (x: number) => {
+    const safeX = Math.max(0, Math.min(trackWidth, x));
+    return clampScore(Math.round((safeX / trackWidth) * 10));
+  };
+  const saveScore = (score: number) => {
+    if (saving) return;
+    setDraftScore(score);
+    onSelect(score);
+  };
+  const panResponder = PanResponder.create({
+    onStartShouldSetPanResponder: () => !saving,
+    onMoveShouldSetPanResponder: () => !saving,
+    onPanResponderGrant: evt => setDraftScore(scoreFromX(evt.nativeEvent.locationX)),
+    onPanResponderMove: evt => setDraftScore(scoreFromX(evt.nativeEvent.locationX)),
+    onPanResponderRelease: evt => saveScore(scoreFromX(evt.nativeEvent.locationX)),
+  });
+  const progress = (draftScore / 10) * 100;
+  const thumbLeft = Math.max(0, Math.min(trackWidth - 28, (progress / 100) * trackWidth - 14));
+
   return (
     <View className="bg-white rounded-2xl p-4 mb-4">
       <View className="flex-row items-center justify-between mb-2">
         <Text className="text-sm font-semibold text-gray-700">今日总体情绪</Text>
-        <Text className="text-sm font-bold text-orange-500">{value != null ? `${value}/10` : '未评分'}</Text>
+        <Text className="text-sm font-bold text-orange-500">{value != null ? `${draftScore}/10` : `未保存 · ${draftScore}/10`}</Text>
       </View>
       <Text className="text-xs text-gray-400 mb-3">0 表示最消极，10 表示最积极</Text>
-      <View className="flex-row flex-wrap gap-2">
-        {Array.from({ length: 11 }, (_, score) => (
-          <TouchableOpacity
-            key={score}
-            onPress={() => onSelect(score)}
-            disabled={saving}
-            className={`w-9 h-9 rounded-full items-center justify-center border ${
-              value === score ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'
-            }`}
-          >
-            <Text className={`text-xs font-semibold ${value === score ? 'text-white' : 'text-gray-500'}`}>{score}</Text>
-          </TouchableOpacity>
-        ))}
+      <View
+        className="py-3"
+        onLayout={event => setTrackWidth(Math.max(1, event.nativeEvent.layout.width))}
+        {...panResponder.panHandlers}
+      >
+        <View className="h-3 bg-gray-100 rounded-full overflow-hidden">
+          <View className="h-3 bg-orange-400 rounded-full" style={{ width: `${progress}%` }} />
+        </View>
+        <View
+          className="absolute top-1 w-7 h-7 rounded-full bg-white border-2 border-orange-400"
+          style={{ left: thumbLeft }}
+        />
+        <View className="flex-row justify-between mt-3">
+          {[0, 2, 4, 6, 8, 10].map(score => (
+            <TouchableOpacity key={score} disabled={saving} onPress={() => saveScore(score)}>
+              <Text className={`text-xs ${draftScore === score ? 'text-orange-500 font-bold' : 'text-gray-400'}`}>{score}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
       {saving && <Text className="text-xs text-gray-400 mt-2">保存中...</Text>}
     </View>
   );
 }
 
-// ── Pleasure × Importance Scatter ────────────────────────────────────────────
-
+// Pleasure x Importance Scatter
 interface ScatterRecord {
   activity?: string;
   timestamp: string;
@@ -773,7 +794,7 @@ export default function HistoryScreen() {
               <View>
                 <View className="flex-row gap-3 mb-5">
                   {[
-                    { label: '今日记录', value: dayStats.count, unit: '条', color: '#f97316' },
+                    { label: '活动条目', value: dayStats.count, unit: '条', color: '#f97316' },
                     { label: '平均愉悦度', value: dayStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
                     { label: '平均重要性', value: dayStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
                   ].map(card => (
@@ -798,40 +819,6 @@ export default function HistoryScreen() {
                   <Text className="text-xs text-gray-400 mb-3">每个点代表一条活动记录，位置由愉悦感和重要性评分决定</Text>
                   <PleasureImportanceScatter records={dayStats.records} />
                 </View>
-
-                {dayStats.records.length > 0 && (
-                  <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-3">今日记录</Text>
-                    {dayStats.records.map((r, i) => (
-                      <View key={i} className="mb-3 pb-3 border-b border-gray-50 last:border-0">
-                        <View className="flex-row justify-between mb-1">
-                          <Text className="text-sm font-medium text-gray-800 flex-1 mr-2">{r.activity || '活动'}</Text>
-                          <Text className="text-xs text-gray-400">
-                            {new Date(r.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
-                          </Text>
-                        </View>
-                        {r.thought && <Text className="text-xs text-gray-500 mb-1">{r.thought}</Text>}
-                        <View className="flex-row gap-4">
-                          {r.pleasure_score != null && (
-                            <View className="flex-row items-center gap-1.5 flex-1">
-                              <Text className="text-xs text-orange-500">愉悦</Text>
-                              <Bar value={r.pleasure_score} color="#fb923c" />
-                              <Text className="text-xs text-gray-400 w-5">{r.pleasure_score}</Text>
-                            </View>
-                          )}
-                          {r.importance_score != null && (
-                            <View className="flex-row items-center gap-1.5 flex-1">
-                              <Text className="text-xs text-indigo-500">重要</Text>
-                              <Bar value={r.importance_score} color="#818cf8" />
-                              <Text className="text-xs text-gray-400 w-5">{r.importance_score}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
