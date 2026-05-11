@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G, Rect } from 'react-native-svg';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { DayStats, WeekStats, MonthStats, InsightReport, DomainRadarItem } from '../../src/types';
+import type { DayStats, WeekStats, MonthStats, InsightReport, DomainRadarItem, MoodRecord } from '../../src/types';
 
 // ── Assessment scales ─────────────────────────────────────────────────────────
 
@@ -265,6 +265,24 @@ function Bar({ value, max = 10, color = '#fb923c' }: { value: number | null | un
 
 const cardStyle = { backgroundColor: '#ffffff', elevation: 1, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 } };
 
+function formatLocalDate(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function getCurrentWeekRange() {
+  const now = new Date();
+  const start = new Date(now);
+  const daysSinceMonday = (now.getDay() + 6) % 7;
+  start.setDate(now.getDate() - daysSinceMonday);
+  start.setHours(0, 0, 0, 0);
+  return {
+    start,
+    end: now,
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(now),
+  };
+}
+
 // ── Line Chart ────────────────────────────────────────────────────────────────
 
 interface ChartPoint { label: string; pleasure?: number | null; importance?: number | null; }
@@ -377,7 +395,7 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
   if (scored.length === 0) {
     return (
       <View className="items-center justify-center py-8">
-        <Text className="text-sm text-gray-400">今天还没有可绘制的愉悦感和重要性评分</Text>
+        <Text className="text-sm text-gray-400">当前范围还没有可绘制的愉悦感和重要性评分</Text>
       </View>
     );
   }
@@ -444,7 +462,7 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
           </View>
         ))}
         {scored.length > 6 && (
-          <Text className="text-xs text-gray-400 mt-1">还有 {scored.length - 6} 条记录可在下方今日记录中查看</Text>
+          <Text className="text-xs text-gray-400 mt-1">还有 {scored.length - 6} 条记录可在记录列表中查看</Text>
         )}
       </View>
     </View>
@@ -641,6 +659,7 @@ export default function HistoryScreen() {
   const [statsTab, setStatsTab] = useState<StatsTab>('today');
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
   const [weekStats, setWeekStats] = useState<WeekStats | null>(null);
+  const [weekRecords, setWeekRecords] = useState<MoodRecord[]>([]);
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [radarData, setRadarData] = useState<DomainRadarItem[] | null>(null);
@@ -659,7 +678,13 @@ export default function HistoryScreen() {
       if (statsTab === 'today') {
         setDayStats(await api.getStatsToday(userId));
       } else if (statsTab === 'week') {
-        setWeekStats(await api.getStatsWeek(userId));
+        const { startDate, endDate } = getCurrentWeekRange();
+        const [stats, records] = await Promise.all([
+          api.getStatsWeek(userId),
+          api.listRecordsRange(startDate, endDate, userId),
+        ]);
+        setWeekStats(stats);
+        setWeekRecords(records.slice().reverse());
       } else {
         setMonthStats(await api.getStatsMonth(userId));
       }
@@ -686,6 +711,7 @@ export default function HistoryScreen() {
   };
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+  const weekRange = getCurrentWeekRange();
 
   const mainTabs: { key: MainTab; label: string }[] = [
     { key: 'stats', label: '📊 数据' },
@@ -841,6 +867,14 @@ export default function HistoryScreen() {
                     })}
                     showEvery={1}
                   />
+                </View>
+
+                <View className="bg-white rounded-2xl p-4 mb-4">
+                  <Text className="text-sm font-semibold text-gray-700 mb-1">本周活动分布</Text>
+                  <Text className="text-xs text-gray-400 mb-3">
+                    {weekRange.startDate} 至 {weekRange.endDate} · 用来帮助安排本周剩下的活动
+                  </Text>
+                  <PleasureImportanceScatter records={weekRecords} />
                 </View>
 
                 {Object.keys(weekStats.emotion_distribution).length > 0 && (

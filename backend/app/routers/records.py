@@ -354,6 +354,8 @@ async def confirm_record(
 async def list_records(
     user_id: str = Query(default="default_user"),
     date: Optional[str] = Query(default=None, description="Filter by date YYYY-MM-DD"),
+    start_date: Optional[str] = Query(default=None, description="Filter from date YYYY-MM-DD"),
+    end_date: Optional[str] = Query(default=None, description="Filter through date YYYY-MM-DD"),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
@@ -372,6 +374,22 @@ async def list_records(
             )
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+    else:
+        if start_date:
+            try:
+                start = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(MoodRecord.timestamp >= start)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid start_date format, use YYYY-MM-DD")
+
+        if end_date:
+            try:
+                from datetime import timedelta
+                end_day = datetime.strptime(end_date, "%Y-%m-%d")
+                end = end_day + timedelta(days=1)
+                query = query.filter(MoodRecord.timestamp < end)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid end_date format, use YYYY-MM-DD")
 
     records = query.order_by(MoodRecord.timestamp.desc()).limit(limit).all()
     return records

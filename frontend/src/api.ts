@@ -81,9 +81,20 @@ export const api = {
       body: JSON.stringify(updates || {}),
     }),
 
-  listRecords: (date?: string, userId = 'default_user') => {
+  listRecords: (date?: string, userId = 'default_user', limit = 50) => {
     const params = new URLSearchParams({ user_id: userId });
     if (date) params.set('date', date);
+    params.set('limit', String(limit));
+    return request<MoodRecord[]>(`/api/record/list?${params}`);
+  },
+
+  listRecordsRange: (startDate: string, endDate: string, userId = 'default_user', limit = 200) => {
+    const params = new URLSearchParams({
+      user_id: userId,
+      start_date: startDate,
+      end_date: endDate,
+      limit: String(limit),
+    });
     return request<MoodRecord[]>(`/api/record/list?${params}`);
   },
 

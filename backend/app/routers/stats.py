@@ -19,6 +19,12 @@ from app.schemas import (
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
 
+def _start_of_current_week(now: datetime) -> datetime:
+    """Return Monday 00:00 for the current natural week."""
+    start = now - timedelta(days=now.weekday())
+    return start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _compute_daily_data(records, start_date, num_days: int) -> list[dict]:
     """Group records by date and compute per-day stats."""
     daily = {}
@@ -142,9 +148,10 @@ async def week_stats(
     user_id: str = Query(default="default_user"),
     db: Session = Depends(get_db),
 ):
-    """Get last 7 days stats."""
+    """Get current natural week stats (Monday through today)."""
     now = datetime.now()
-    start_date = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_date = _start_of_current_week(now)
+    num_days = (now.date() - start_date.date()).days + 1
 
     records = (
         db.query(MoodRecord)
@@ -156,7 +163,7 @@ async def week_stats(
         .all()
     )
 
-    daily_data = _compute_daily_data(records, start_date.date(), 7)
+    daily_data = _compute_daily_data(records, start_date.date(), num_days)
 
     return WeekStatsResponse(
         daily_data=daily_data,
@@ -223,7 +230,7 @@ async def domain_radar(
         start_date_str = start_dt.strftime("%Y-%m-%d")
         end_date_str = now.strftime("%Y-%m-%d")
     else:  # week (default)
-        start_dt = (now - timedelta(days=6)).replace(hour=0, minute=0, second=0, microsecond=0)
+        start_dt = _start_of_current_week(now)
         end_dt = now + timedelta(days=1)
         start_date_str = start_dt.strftime("%Y-%m-%d")
         end_date_str = now.strftime("%Y-%m-%d")
