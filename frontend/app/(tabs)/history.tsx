@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G, Rect } from 'react-native-svg';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { DayStats, WeekStats, MonthStats, InsightReport, DomainRadarItem, MoodRecord } from '../../src/types';
+import type { DayStats, WeekStats, MonthStats, DomainRadarItem, MoodRecord } from '../../src/types';
 
 // ── Assessment scales ─────────────────────────────────────────────────────────
 
@@ -662,81 +662,9 @@ function RadarChart({ data }: { data: DomainRadarItem[] }) {
   );
 }
 
-// ── InsightCard ───────────────────────────────────────────────────────────────
-
-const EMOTION_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  焦虑: { bg: '#fef3c7', text: '#92400e', border: '#fcd34d' },
-  低落: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
-  悲伤: { bg: '#fee2e2', text: '#991b1b', border: '#fca5a5' },
-  愉快: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
-  平静: { bg: '#dcfce7', text: '#166534', border: '#86efac' },
-  愤怒: { bg: '#ffe4e6', text: '#9f1239', border: '#fda4af' },
-  充实: { bg: '#d1fae5', text: '#065f46', border: '#6ee7b7' },
-  感恩: { bg: '#ccfbf1', text: '#134e4a', border: '#5eead4' },
-};
-const defaultEmotion = { bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' };
-
-function InsightCard({ report, loading, type }: {
-  report: InsightReport | null; loading: boolean; type: 'daily' | 'weekly';
-}) {
-  if (loading) {
-    return (
-      <View className="rounded-2xl p-5 mb-4" style={cardStyle}>
-        <View className="h-4 bg-gray-200 rounded w-1/3 mb-4" />
-        <View className="h-3 bg-gray-100 rounded w-full mb-2" />
-        <View className="h-3 bg-gray-100 rounded w-5/6 mb-2" />
-        <View className="h-3 bg-gray-100 rounded w-4/6" />
-      </View>
-    );
-  }
-  if (!report) return null;
-
-  return (
-    <View className="rounded-2xl p-5 mb-4" style={cardStyle}>
-      <Text className="text-base font-bold text-gray-800 mb-3">
-        {type === 'daily' ? '今日总结' : '本周总结'}
-      </Text>
-      <Text className="text-sm text-gray-600 leading-relaxed">{report.content}</Text>
-
-      {type === 'weekly' && Array.isArray(report.patterns) && report.patterns.length > 0 && (
-        <View className="mt-4">
-          <Text className="text-sm font-semibold text-gray-700 mb-2">情绪模式</Text>
-          {report.patterns.map((p, i) => {
-            const c = EMOTION_COLORS[p.emotion] ?? defaultEmotion;
-            return (
-              <View key={i} className="p-3 rounded-xl border mb-2"
-                style={{ backgroundColor: c.bg, borderColor: c.border }}>
-                <View className="flex-row justify-between mb-1">
-                  <Text style={{ color: c.text }} className="font-medium text-sm">{p.trigger}</Text>
-                  <Text style={{ color: c.text }} className="text-xs opacity-75">出现 {p.frequency} 次</Text>
-                </View>
-                <Text style={{ color: c.text }} className="text-xs opacity-80">{p.insight}</Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {type === 'weekly' && Array.isArray(report.cbt_suggestions) && report.cbt_suggestions.length > 0 && (
-        <View className="mt-4">
-          <Text className="text-sm font-semibold text-gray-700 mb-2">CBT 建议</Text>
-          {report.cbt_suggestions.map((s, i) => (
-            <View key={i} className="flex-row mb-2">
-              <View className="w-5 h-5 rounded-full bg-orange-100 items-center justify-center mr-2 mt-0.5">
-                <Text className="text-xs text-orange-600 font-bold">{i + 1}</Text>
-              </View>
-              <Text className="text-sm text-gray-600 flex-1 leading-relaxed">{s}</Text>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
 // ── Main component ─────────────────────────────────────────────────────────────
 
-type MainTab = 'stats' | 'summary' | 'assessment';
+type MainTab = 'stats' | 'assessment';
 type StatsTab = 'today' | 'week' | 'month';
 
 export default function HistoryScreen() {
@@ -751,11 +679,6 @@ export default function HistoryScreen() {
   const [todayMoodScore, setTodayMoodScore] = useState<number | null>(null);
   const [savingMood, setSavingMood] = useState(false);
   const [radarData, setRadarData] = useState<DomainRadarItem[] | null>(null);
-  const [dailyInsight, setDailyInsight] = useState<InsightReport | null>(null);
-  const [weeklyInsight, setWeeklyInsight] = useState<InsightReport | null>(null);
-  const [dailyLoading, setDailyLoading] = useState(false);
-  const [weeklyLoading, setWeeklyLoading] = useState(false);
-  const [insightError, setInsightError] = useState('');
 
   const loadStats = useCallback(async () => {
     setLoading(true);
@@ -786,20 +709,6 @@ export default function HistoryScreen() {
     if (mainTab === 'stats') loadStats();
   }, [mainTab, statsTab, loadStats]);
 
-  const handleDailyInsight = async () => {
-    setDailyLoading(true); setInsightError('');
-    try { setDailyInsight(await api.getDailyInsight(userId)); }
-    catch (err) { setInsightError(err instanceof Error ? err.message : '获取失败'); }
-    finally { setDailyLoading(false); }
-  };
-
-  const handleWeeklyInsight = async () => {
-    setWeeklyLoading(true); setInsightError('');
-    try { setWeeklyInsight(await api.getWeeklyInsight(userId)); }
-    catch (err) { setInsightError(err instanceof Error ? err.message : '获取失败'); }
-    finally { setWeeklyLoading(false); }
-  };
-
   const handleMoodSelect = async (score: number) => {
     if (savingMood) return;
     setSavingMood(true);
@@ -817,7 +726,6 @@ export default function HistoryScreen() {
 
   const mainTabs: { key: MainTab; label: string }[] = [
     { key: 'stats', label: '📊 数据' },
-    { key: 'summary', label: '💡 总结' },
     { key: 'assessment', label: '📋 测评' },
   ];
 
@@ -960,24 +868,6 @@ export default function HistoryScreen() {
                   <PleasureImportanceScatter records={weekRecords} />
                 </View>
 
-                {Object.keys(weekStats.emotion_distribution).length > 0 && (
-                  <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-3">情绪分布</Text>
-                    {Object.entries(weekStats.emotion_distribution)
-                      .sort(([, a], [, b]) => b - a)
-                      .slice(0, 5)
-                      .map(([emotion, count]) => (
-                        <View key={emotion} className="flex-row items-center mb-1.5">
-                          <Text className="text-sm text-gray-600 w-14">{emotion}</Text>
-                          <View className="flex-1 mx-2">
-                            <Bar value={count} max={weekStats.total_count} color="#fdba74" />
-                          </View>
-                          <Text className="text-xs text-gray-400 w-5">{count}</Text>
-                        </View>
-                      ))}
-                  </View>
-                )}
-
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
                     <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
@@ -1017,25 +907,6 @@ export default function HistoryScreen() {
                   />
                 </View>
 
-                {Object.keys(monthStats.emotion_distribution).length > 0 && (
-                  <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-3">情绪分布</Text>
-                    {Object.entries(monthStats.emotion_distribution)
-                      .sort(([, a], [, b]) => b - a)
-                      .slice(0, 5)
-                      .map(([emotion, count]) => (
-                        <View key={emotion} className="flex-row items-center mb-1.5">
-                          <Text className="text-sm text-gray-600 w-14">{emotion}</Text>
-                          <View className="flex-1 mx-2">
-                            <Bar value={count} max={monthStats.total_count} color="#fdba74" />
-                          </View>
-                          <Text className="text-xs text-gray-400 w-5">{count}</Text>
-                        </View>
-                      ))}
-                  </View>
-                )}
-
-
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
                     <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
@@ -1046,52 +917,6 @@ export default function HistoryScreen() {
               </View>
             )}
           </>
-        )}
-
-        {/* ── 总结 tab ── */}
-        {mainTab === 'summary' && (
-          <View>
-            <Text className="text-sm text-gray-500 mb-4 leading-relaxed">
-              让 AI 帮你回顾今天或本周的行为与情绪模式。
-            </Text>
-            <View className="flex-row gap-3 mb-4">
-              <TouchableOpacity
-                onPress={handleDailyInsight}
-                disabled={dailyLoading}
-                className="flex-1 py-3 rounded-xl items-center"
-                style={{ backgroundColor: '#fff7ed', opacity: dailyLoading ? 0.6 : 1 }}
-              >
-                <Text className="text-orange-600 font-medium text-sm">
-                  {dailyLoading ? '生成中...' : '今日总结'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleWeeklyInsight}
-                disabled={weeklyLoading}
-                className="flex-1 py-3 rounded-xl items-center"
-                style={{ backgroundColor: '#fff7ed', opacity: weeklyLoading ? 0.6 : 1 }}
-              >
-                <Text className="text-orange-600 font-medium text-sm">
-                  {weeklyLoading ? '生成中...' : '本周总结'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {insightError ? (
-              <Text className="text-sm text-red-500 text-center mb-3">{insightError}</Text>
-            ) : null}
-
-            {!dailyInsight && !weeklyInsight && !dailyLoading && !weeklyLoading && (
-              <View className="items-center py-12">
-                <Text className="text-4xl mb-3">💡</Text>
-                <Text className="text-gray-500 text-sm">点击上方按钮生成 AI 总结</Text>
-                <Text className="text-gray-400 text-xs mt-1">需要有记录数据才能生成</Text>
-              </View>
-            )}
-
-            <InsightCard report={dailyInsight} loading={dailyLoading} type="daily" />
-            <InsightCard report={weeklyInsight} loading={weeklyLoading} type="weekly" />
-          </View>
         )}
 
         {/* ── 测评 tab ── */}

@@ -16,8 +16,6 @@ export interface MoodRecord {
   importance_score?: number;
   planned_activity_id?: string;
   life_domain_id?: string | null;  // null = "其他"
-  emotion_type: string;
-  emotion_intensity: number;
   ai_immediate_feedback: string;
   risk_level: 'safe' | 'mild' | 'high' | 'crisis';
   confirmed: boolean;
@@ -46,22 +44,6 @@ export interface DomainRadarItem {
   domain_id: string | null;  // null = "其他"
   domain_name: string;
   count: number;
-}
-
-export interface InsightReport {
-  id: string;
-  report_type: 'daily' | 'weekly';
-  generated_at: string;
-  content: string;
-  patterns: EmotionPattern[];
-  cbt_suggestions: string[];
-}
-
-export interface EmotionPattern {
-  trigger: string;
-  emotion: string;
-  frequency: number;
-  insight: string;
 }
 
 export interface LifeDomain {
@@ -172,15 +154,12 @@ export interface UserState {
 export interface DayStats {
   records: {
     timestamp: string;
-    emotion_type: string;
-    emotion_intensity: number;
     pleasure_score?: number;
     importance_score?: number;
     activity?: string;
     thought?: string;
   }[];
   count: number;
-  avg_intensity: number;
   avg_pleasure?: number;
   avg_importance?: number;
   daily_mood_score?: number | null;
@@ -188,19 +167,15 @@ export interface DayStats {
 
 export interface DailyDataPoint {
   date: string;
-  avg_intensity: number;
   avg_pleasure?: number;
   avg_importance?: number;
   count: number;
-  dominant_emotion: string;
   daily_mood_score?: number;
 }
 
 export interface WeekStats {
   daily_data: DailyDataPoint[];
   total_count: number;
-  emotion_distribution: Record<string, number>;
-  avg_intensity: number;
   avg_pleasure?: number;
   avg_importance?: number;
 }
@@ -208,8 +183,6 @@ export interface WeekStats {
 export interface MonthStats {
   daily_data: DailyDataPoint[];
   total_count: number;
-  emotion_distribution: Record<string, number>;
-  avg_intensity: number;
   avg_pleasure?: number;
   avg_importance?: number;
 }

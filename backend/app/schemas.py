@@ -20,8 +20,6 @@ class RecordSubmitRequest(BaseModel):
 class RecordConfirmRequest(BaseModel):
     activity: Optional[str] = None
     thought: Optional[str] = None
-    emotion_type: Optional[str] = None
-    emotion_intensity: Optional[int] = None
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
     life_domain_id: Optional[str] = None  # None = "其他"; only applied if field is in request body
@@ -153,8 +151,6 @@ class MoodRecordResponse(BaseModel):
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
     planned_activity_id: Optional[str] = None
-    emotion_type: Optional[str] = None
-    emotion_intensity: Optional[int] = None
     voice_valence: Optional[float] = None
     voice_arousal: Optional[float] = None
     combined_emotion_score: Optional[float] = None
@@ -168,23 +164,8 @@ class MoodRecordResponse(BaseModel):
         from_attributes = True
 
 
-class InsightReportResponse(BaseModel):
-    id: str
-    user_id: str
-    report_type: str
-    generated_at: datetime
-    content: Optional[str] = None
-    patterns: Optional[str] = None
-    cbt_suggestions: Optional[str] = None
-
-    class Config:
-        from_attributes = True
-
-
 class TodayStatsRecord(BaseModel):
     timestamp: datetime
-    emotion_type: Optional[str] = None
-    emotion_intensity: Optional[int] = None
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
     activity: Optional[str] = None
@@ -193,7 +174,6 @@ class TodayStatsRecord(BaseModel):
 class TodayStatsResponse(BaseModel):
     records: List[TodayStatsRecord]
     count: int
-    avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
     daily_mood_score: Optional[float] = None
@@ -201,19 +181,15 @@ class TodayStatsResponse(BaseModel):
 
 class DailyData(BaseModel):
     date: str
-    avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
     count: int
-    dominant_emotion: Optional[str] = None
     daily_mood_score: Optional[float] = None
 
 
 class WeekStatsResponse(BaseModel):
     daily_data: List[DailyData]
     total_count: int
-    emotion_distribution: Dict[str, int]
-    avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
 
@@ -221,8 +197,6 @@ class WeekStatsResponse(BaseModel):
 class MonthStatsResponse(BaseModel):
     daily_data: List[DailyData]
     total_count: int
-    emotion_distribution: Dict[str, int]
-    avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
 

@@ -33,8 +33,7 @@ STRUCTURED_EXTRACTION_SYSTEM = """你是一个行为激活疗法（BA/BATD-R）�
 2. 想法（Thought）：用户提到的简短想法或感受描述（可以没有）。
 3. 愉悦度估计（Pleasure）：根据描述，估计该活动带给用户的乐趣程度，0-10分。
 4. 重要性估计（Importance）：根据描述，估计该活动对用户生命价值的契合程度，0-10分。
-5. 情绪类型（Emotion）：从以下选项中选择最匹配的：焦虑、低落、愤怒、悲伤、恐惧、愧疚、平静、愉快、充实、感恩。
-6. 生活领域（life_domain）：从以下选项中选择最匹配的：亲密关系、教育与职业、休闲兴趣、自我关怀、日常责任、其他。
+5. 生活领域（life_domain）：从以下选项中选择最匹配的：亲密关系、教育与职业、休闲兴趣、自我关怀、日常责任、其他。
 
 生活领域参考：
 - 亲密关系：家人、伴侣、朋友等人际互动
@@ -50,7 +49,6 @@ STRUCTURED_EXTRACTION_SYSTEM = """你是一个行为激活疗法（BA/BATD-R）�
   "thought": "...",
   "pleasure_score": 7,
   "importance_score": 8,
-  "emotion_type": "愉快",
   "life_domain": "休闲兴趣"
 }
 
@@ -103,73 +101,5 @@ def empathic_feedback_prompt(
         f"提取结果：活动={activity}，想法={thought}\n"
         f"愉悦度={pleasure_score}/10，重要性={importance_score}/10\n"
         f"近期活动摘要（最近3条）：{recent_records_summary}"
-    )
-    return system, user_message
-
-
-# ── 每日摘要 ──────────────────────────────────────────────────────────────────
-
-DAILY_SUMMARY_SYSTEM = """你是"小暖"，用户的行为激活伙伴。基于用户今天的活动记录，生成一份行为聚焦的每日总结。
-
-生成内容：
-1. 今日行为概览（1-2句）：用户今天做了什么
-2. 愉悦度与重要性洞察（1句）：哪些活动带来了乐趣？哪些连接了用户的价值观？
-3. 积极肯定（1句）：认可今天的努力
-4. 明日行动建议（1句，可选）：建议一个明天可以做的小行动
-
-重要规则：
-- 聚焦行为，不聚焦情绪诊断
-- 如果今天只有1条记录，总结要简短
-- 语气温暖、鼓励
-- 控制在100-200字
-- 中文输出"""
-
-
-def daily_summary_prompt(today_records_json: str, db=None) -> tuple[str, str]:
-    system = get_prompt("daily_summary", DAILY_SUMMARY_SYSTEM, db)
-    return system, f"今日活动记录数据：\n{today_records_json}"
-
-
-# ── 每周摘要 ──────────────────────────────────────────────────────────────────
-
-WEEKLY_SUMMARY_SYSTEM = """你是"小暖"，用户的行为激活伙伴。基于用户过去一周的活动记录，生成一份深度的行为-情绪关联洞察报告。
-
-生成内容：
-1. 本周行为画像（2-3句）：用户这周主要做了哪些类型的活动
-2. 行为-情绪关联发现（2-3句）：哪些活动的愉悦度高？哪些重要性高？两者都低的活动意味着什么？
-3. 生活领域平衡分析（1-2句）：用户这周的活动是否覆盖了多个生活领域，还是集中在某一领域？
-4. 行动建议（1-2个具体建议）：下周可以尝试增加哪类活动？
-
-同时输出结构化JSON：
-{
-  "summary": "...",
-  "patterns": [{"trigger": "...", "emotion": "...", "frequency": N, "insight": "..."}],
-  "cbt_suggestions": ["...", "..."],
-  "progress_note": "..."
-}
-
-重要规则：
-- 模式识别必须基于实际数据，不要编造
-- 建议必须具体、可操作（如"每天下午散步10分钟"而非"多运动"）
-- 控制在300字以内
-- 中文输出"""
-
-
-def weekly_summary_prompt(
-    week_records_json: str,
-    total_count: int,
-    avg_pleasure: float,
-    avg_importance: float,
-    intensity_trend: str,
-    db=None,
-) -> tuple[str, str]:
-    system = get_prompt("weekly_summary", WEEKLY_SUMMARY_SYSTEM, db)
-    user_message = (
-        f"本周活动记录数据：\n{week_records_json}\n\n"
-        f"统计摘要：\n"
-        f"- 总记录数：{total_count}\n"
-        f"- 平均愉悦度：{avg_pleasure:.1f}/10\n"
-        f"- 平均重要性：{avg_importance:.1f}/10\n"
-        f"- 情绪趋势：{intensity_trend}"
     )
     return system, user_message

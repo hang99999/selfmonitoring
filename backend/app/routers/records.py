@@ -167,7 +167,6 @@ async def submit_record(
             raw_text=req.text,
             activity=activity,
             thought="",
-            emotion_type="",
             pleasure_score=pleasure_score,
             importance_score=importance_score,
             planned_activity_id=req.planned_activity_id,
@@ -229,7 +228,6 @@ async def submit_record(
 
     activity = extraction_data.get("activity", "")
     thought = extraction_data.get("thought", "")
-    emotion_type = extraction_data.get("emotion_type", "")
     pleasure_score = extraction_data.get("pleasure_score", 5)
     importance_score = extraction_data.get("importance_score", 5)
     suggested_domain_name = extraction_data.get("life_domain", "其他")
@@ -266,7 +264,6 @@ async def submit_record(
         raw_text=req.text,
         activity=activity,
         thought=thought,
-        emotion_type=emotion_type,
         pleasure_score=pleasure_score,
         importance_score=importance_score,
         planned_activity_id=req.planned_activity_id,
@@ -332,10 +329,6 @@ async def confirm_record(
             record.activity = body.activity
         if body.thought is not None:
             record.thought = body.thought
-        if body.emotion_type is not None:
-            record.emotion_type = body.emotion_type
-        if body.emotion_intensity is not None:
-            record.emotion_intensity = body.emotion_intensity
         if body.pleasure_score is not None:
             record.pleasure_score = max(0.0, min(10.0, body.pleasure_score))
         if body.importance_score is not None:

@@ -1,5 +1,5 @@
 import type {
-  MoodRecord, InsightReport, DayStats, WeekStats, MonthStats,
+  MoodRecord, DayStats, WeekStats, MonthStats,
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
   TreatmentProgressData, Supporter, PlannedActivitySupporter,
@@ -70,8 +70,6 @@ export const api = {
   confirmRecord: (id: string, updates?: {
     activity?: string;
     thought?: string;
-    emotion_type?: string;
-    emotion_intensity?: number;
     pleasure_score?: number;
     importance_score?: number;
     life_domain_id?: string | null;
@@ -100,16 +98,6 @@ export const api = {
 
   getRecord: (id: string) =>
     request<MoodRecord>(`/api/record/${id}`),
-
-  // --- Insights ---
-  getDailyInsight: (userId = 'default_user', date?: string) => {
-    const params = new URLSearchParams({ user_id: userId });
-    if (date) params.set('date', date);
-    return request<InsightReport>(`/api/insight/daily?${params}`);
-  },
-
-  getWeeklyInsight: (userId = 'default_user') =>
-    request<InsightReport>(`/api/insight/weekly?user_id=${userId}`),
 
   // --- Stats ---
   getStatsToday: (userId = 'default_user') =>

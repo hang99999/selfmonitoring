@@ -6,13 +6,11 @@ from sqlalchemy import text
 
 from app.database import engine, SessionLocal
 from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress, PhaseConfig
-from app.routers import records, insights, stats, activities, chatbot, auth, supporters, audio
+from app.routers import records, stats, activities, chatbot, auth, supporters, audio
 from app.prompts import (
     SAFETY_CHECK_SYSTEM,
     STRUCTURED_EXTRACTION_SYSTEM,
     EMPATHIC_FEEDBACK_SYSTEM,
-    DAILY_SUMMARY_SYSTEM,
-    WEEKLY_SUMMARY_SYSTEM,
     CHATBOT_CORE_PROMPT,
 )
 
@@ -63,10 +61,8 @@ async def lifespan(app: FastAPI):
 
 _PROMPT_SEEDS = [
     ("safety_check",          "安全风险评估：判断用户输入的风险等级（safe/mild/high/crisis）",          SAFETY_CHECK_SYSTEM),
-    ("structured_extraction", "BA结构化提取：从用户记录中提取活动、想法、愉悦度、重要性、情绪类型",      STRUCTURED_EXTRACTION_SYSTEM),
+    ("structured_extraction", "BA结构化提取：从用户记录中提取活动、想法、愉悦度、重要性",                STRUCTURED_EXTRACTION_SYSTEM),
     ("empathic_feedback",     "小暖即时反馈：对用户完成的活动给出温暖的正向强化回应",                    EMPATHIC_FEEDBACK_SYSTEM),
-    ("daily_summary",         "每日总结：基于当天活动记录生成行为聚焦的每日小结",                        DAILY_SUMMARY_SYSTEM),
-    ("weekly_summary",        "每周报告：生成行为-情绪关联洞察报告，包含结构化JSON",                     WEEKLY_SUMMARY_SYSTEM),
     ("chatbot_core",          "小暖核心人格：角色定位、BA原则、对话风格、安全规则（三条路径共用）",        CHATBOT_CORE_PROMPT),
 ]
 
@@ -98,7 +94,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(records.router)
-app.include_router(insights.router)
 app.include_router(stats.router)
 app.include_router(activities.router)
 app.include_router(chatbot.router)
