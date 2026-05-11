@@ -199,8 +199,16 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     )
     high_importance_low_enjoyment_ratio = round(hi_lo / len(records_7d), 2) if records_7d else 0.0
 
+    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).all()
+    domain_id_to_name = {d.id: d.name for d in all_domains}
+
     recent_activity_records = [
-        {"activity": r.activity, "pleasure": r.pleasure_score, "importance": r.importance_score}
+        {
+            "activity": r.activity,
+            "pleasure": r.pleasure_score,
+            "importance": r.importance_score,
+            "life_domain": domain_id_to_name.get(r.life_domain_id, "其他"),
+        }
         for r in sorted(records_7d, key=lambda x: x.timestamp, reverse=True)
         if r.activity
     ][:8]
@@ -254,7 +262,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     has_values = db.query(Value).filter(Value.user_id == user_id).count() > 0
     has_activities = db.query(Activity).filter(Activity.user_id == user_id).count() > 0
 
-    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).all()
     all_activities = db.query(Activity).filter(Activity.user_id == user_id).all()
     all_values = db.query(Value).filter(Value.user_id == user_id).all()
 
@@ -269,7 +276,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         activities_quality_issue = None
     values_quality_issue = None  # requires LLM analysis; left for future implementation
 
-    domain_id_to_name = {d.id: d.name for d in all_domains}
     domain_with_activity: set = set()
     domain_act_counts: Counter = Counter()
     for a in all_activities:
@@ -443,6 +449,158 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
         "active_triggers": top_trigger,
         "recent_activity_records": recent_activity_records,
     }
+
+
+def _phase_session_start(
+    db: Session,
+    user_id: str,
+    intent: str,
+    before: datetime,
+    fallback: datetime,
+    min_phase_step: Optional[int] = None,
+) -> datetime:
+    query = db.query(ChatSession).filter(
+        ChatSession.user_id == user_id,
+        ChatSession.session_intent == intent,
+        ChatSession.created_at < before,
+    )
+    if min_phase_step is not None:
+        query = query.filter(ChatSession.phase_step >= min_phase_step)
+    previous = query.order_by(ChatSession.created_at.desc()).first()
+    return previous.created_at if previous else fallback
+
+
+def _apply_phase_review_window(
+    db: Session,
+    state: dict,
+    user_id: str,
+    start: datetime,
+    end: datetime,
+) -> None:
+    start_date = start.strftime("%Y-%m-%d")
+    end_date = end.strftime("%Y-%m-%d")
+    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).all()
+    domain_id_to_name = {d.id: d.name for d in all_domains}
+
+    records = (
+        db.query(MoodRecord)
+        .filter(
+            MoodRecord.user_id == user_id,
+            MoodRecord.timestamp >= start,
+            MoodRecord.timestamp <= end,
+        )
+        .order_by(MoodRecord.timestamp.desc())
+        .all()
+    )
+    plans = (
+        db.query(PlannedActivity)
+        .filter(
+            PlannedActivity.user_id == user_id,
+            PlannedActivity.scheduled_date >= start_date,
+            PlannedActivity.scheduled_date <= end_date,
+        )
+        .order_by(PlannedActivity.scheduled_date.asc(), PlannedActivity.scheduled_time.asc().nulls_last())
+        .all()
+    )
+    completed_plan_ids = {p.id for p in plans if p.completed}
+
+    def _quadrant(record: MoodRecord) -> Optional[str]:
+        if record.pleasure_score is None or record.importance_score is None:
+            return None
+        if record.pleasure_score >= 5 and record.importance_score >= 5:
+            return "高愉悦高重要"
+        if record.pleasure_score < 5 and record.importance_score >= 5:
+            return "低愉悦高重要"
+        if record.pleasure_score >= 5 and record.importance_score < 5:
+            return "高愉悦低重要"
+        return "低愉悦低重要"
+
+    quadrant_items: dict[str, list[str]] = {
+        "高愉悦高重要": [],
+        "低愉悦高重要": [],
+        "高愉悦低重要": [],
+        "低愉悦低重要": [],
+    }
+    for record in records:
+        q = _quadrant(record)
+        if q and record.activity and len(quadrant_items[q]) < 3:
+            quadrant_items[q].append(record.activity)
+
+    recent_activity_records = [
+        {
+            "date": r.timestamp.strftime("%Y-%m-%d"),
+            "activity": r.activity,
+            "pleasure": r.pleasure_score,
+            "importance": r.importance_score,
+            "life_domain": domain_id_to_name.get(r.life_domain_id, "其他"),
+            "planned_activity_id": r.planned_activity_id,
+            "is_completed_plan": bool(r.planned_activity_id and r.planned_activity_id in completed_plan_ids),
+        }
+        for r in records
+        if r.activity
+    ][:8]
+
+    records_by_id = {r.id: r for r in records}
+    records_by_plan_id = {r.planned_activity_id: r for r in records if r.planned_activity_id}
+    completed_plans_with_records = []
+    for p in plans:
+        if not p.completed:
+            continue
+        record = records_by_id.get(p.completion_record_id) if p.completion_record_id else records_by_plan_id.get(p.id)
+        completed_plans_with_records.append({
+            "id": p.id,
+            "name": p.activity_name,
+            "date": p.scheduled_date,
+            "life_domain": domain_id_to_name.get(p.life_domain_id, "其他"),
+            "completion_record_id": p.completion_record_id,
+            "pleasure": record.pleasure_score if record else None,
+            "importance": record.importance_score if record else None,
+        })
+
+    incomplete_counts = Counter(
+        p.activity_name for p in plans if not p.completed
+    )
+    incomplete_plans = [
+        {
+            "id": p.id,
+            "name": p.activity_name,
+            "date": p.scheduled_date,
+            "life_domain": domain_id_to_name.get(p.life_domain_id, "其他"),
+            "repeatedly_incomplete": incomplete_counts[p.activity_name] >= 2
+                or p.activity_name in state.get("repeatedly_incomplete_activities", []),
+        }
+        for p in plans
+        if not p.completed
+    ]
+
+    planned_count = len(plans)
+    completed_count = sum(1 for p in plans if p.completed)
+    state.update({
+        "review_window_start": start_date,
+        "review_window_end": end_date,
+        "total_records_this_week": len(records),
+        "recent_activity_records": recent_activity_records,
+        "planned_activities_this_week": planned_count,
+        "completed_planned_activities": completed_count,
+        "completion_rate_this_week": round(completed_count / planned_count, 2) if planned_count else 0.0,
+        "this_week_activity_plan": [
+            {
+                "id": p.id,
+                "name": p.activity_name,
+                "date": p.scheduled_date,
+                "completed": p.completed,
+                "completion_record_id": p.completion_record_id,
+                "life_domain": domain_id_to_name.get(p.life_domain_id, "其他"),
+            }
+            for p in plans
+        ],
+        "quadrant_summary": [
+            {"name": name, "count": sum(1 for r in records if _quadrant(r) == name), "examples": examples}
+            for name, examples in quadrant_items.items()
+        ],
+        "completed_plans_with_records": completed_plans_with_records,
+        "incomplete_plans": incomplete_plans,
+    })
 
 
 # ── Activity tag parsing ──────────────────────────────────────────────────────
@@ -690,9 +848,19 @@ async def chat(
         elif not req.session_intent:
             effective_intent = phase_session_obj.session_intent
 
-    system = chatbot_system_prompt(state, companion_name, db=db, session_intent=effective_intent)
-
     response_phase_step = None
+
+    if effective_intent and effective_intent.startswith("phase:") and phase_session_obj:
+        now = datetime.now()
+        if progress.phase == "first_review":
+            fallback = progress.phase_unlocked_at - timedelta(days=7)
+            start = _phase_session_start(db, req.user_id, "phase:setup", phase_session_obj.created_at, fallback)
+            _apply_phase_review_window(db, state, req.user_id, start, now)
+        elif progress.phase == "review_cycle":
+            start = _phase_session_start(db, req.user_id, "phase:review_cycle", phase_session_obj.created_at, progress.phase_unlocked_at)
+            _apply_phase_review_window(db, state, req.user_id, start, now)
+
+    system = chatbot_system_prompt(state, companion_name, db=db, session_intent=effective_intent)
 
     # Inject step tracking for phase sessions
     if effective_intent and effective_intent.startswith("phase:"):
@@ -772,6 +940,28 @@ async def get_treatment_progress(
     if phase == "setup":
         phase_scatter_start = (
             progress.phase_unlocked_at - timedelta(days=max(1, cfg.intro_days))
+        ).strftime("%Y-%m-%d")
+        phase_scatter_end = now.strftime("%Y-%m-%d")
+    elif phase == "first_review":
+        phase_scatter_start = (
+            _phase_session_start(
+                db,
+                user_id,
+                "phase:setup",
+                now,
+                progress.phase_unlocked_at - timedelta(days=max(1, cfg.setup_days)),
+                min_phase_step=2,
+            )
+        ).strftime("%Y-%m-%d")
+        phase_scatter_end = now.strftime("%Y-%m-%d")
+    elif phase == "review_cycle":
+        phase_scatter_start = _phase_session_start(
+            db,
+            user_id,
+            "phase:review_cycle",
+            now,
+            progress.phase_unlocked_at,
+            min_phase_step=4,
         ).strftime("%Y-%m-%d")
         phase_scatter_end = now.strftime("%Y-%m-%d")
 

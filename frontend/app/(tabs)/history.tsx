@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G, Rect } from 'react-native-svg';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { DayStats, WeekStats, MonthStats, DomainRadarItem, MoodRecord } from '../../src/types';
+import type { DayStats, WeekStats, MonthStats, DomainRadarItem, MoodRecord, PlannedActivity } from '../../src/types';
 
 // ── Assessment scales ─────────────────────────────────────────────────────────
 
@@ -272,6 +272,17 @@ function getCurrentWeekRange() {
   };
 }
 
+function getCurrentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  return {
+    start,
+    end: now,
+    startDate: formatLocalDate(start),
+    endDate: formatLocalDate(now),
+  };
+}
+
 // ── Line Chart ────────────────────────────────────────────────────────────────
 
 interface ChartPoint { label: string; pleasure?: number | null; importance?: number | null; mood?: number | null; }
@@ -461,9 +472,52 @@ interface ScatterRecord {
   timestamp: string;
   pleasure_score?: number | null;
   importance_score?: number | null;
+  planned_activity_id?: string | null;
 }
 
-function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
+function PlanListSection({
+  plannedActivities, completedPlansWithoutPoint = [],
+}: {
+  plannedActivities: PlannedActivity[];
+  completedPlansWithoutPoint?: PlannedActivity[];
+}) {
+  if (plannedActivities.length === 0) return null;
+  const incompletePlans = plannedActivities.filter(p => !p.completed);
+
+  return (
+    <View className="border-t border-gray-100 pt-3 mt-1">
+      <Text className="text-xs font-semibold text-gray-500 mb-2">计划活动</Text>
+      <View className="flex-row flex-wrap gap-2 mb-2">
+        <View className="px-2 py-1 rounded-lg bg-green-50">
+          <Text className="text-xs text-green-700">已完成 {plannedActivities.filter(p => p.completed).length}</Text>
+        </View>
+        <View className="px-2 py-1 rounded-lg bg-gray-50">
+          <Text className="text-xs text-gray-500">未完成 {incompletePlans.length}</Text>
+        </View>
+      </View>
+      {incompletePlans.length > 0 ? incompletePlans.map(plan => (
+        <View key={plan.id} className="flex-row items-center mb-1.5">
+          <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{plan.activity_name}</Text>
+          <Text className="text-xs text-gray-400">{plan.scheduled_date}</Text>
+        </View>
+      )) : (
+        <Text className="text-xs text-gray-300 mb-1.5">当前范围没有未完成的计划</Text>
+      )}
+      {completedPlansWithoutPoint.length > 0 && (
+        <Text className="text-xs text-gray-400 mt-2">
+          另有 {completedPlansWithoutPoint.length} 个已完成计划没有评分记录，暂时不显示在图上。
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function PleasureImportanceScatter({
+  records, plannedActivities = [],
+}: {
+  records: ScatterRecord[];
+  plannedActivities?: PlannedActivity[];
+}) {
   const { width } = useWindowDimensions();
   const chartW = width - 64;
   const chartH = 260;
@@ -474,6 +528,10 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
     .filter(r => r.pleasure_score != null && r.importance_score != null)
     .map((record, index) => ({ record, index: index + 1 }));
   const gridLines = [0, 5, 10];
+  const completedPlanIds = new Set(plannedActivities.filter(p => p.completed).map(p => p.id));
+  const completedPlansWithoutPoint = plannedActivities.filter(
+    p => p.completed && !scored.some(({ record }) => record.planned_activity_id === p.id),
+  );
 
   const clamp = (v: number) => Math.max(0, Math.min(10, v));
   const xOf = (v: number) => PL + (clamp(v) / 10) * innerW;
@@ -502,8 +560,11 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
 
   if (scored.length === 0) {
     return (
-      <View className="items-center justify-center py-8">
-        <Text className="text-sm text-gray-400">当前范围还没有可绘制的愉悦感和重要性评分</Text>
+      <View>
+        <View className="items-center justify-center py-8">
+          <Text className="text-sm text-gray-400">当前范围还没有可绘制的愉悦感和重要性评分</Text>
+        </View>
+        <PlanListSection plannedActivities={plannedActivities} completedPlansWithoutPoint={plannedActivities.filter(p => p.completed)} />
       </View>
     );
   }
@@ -537,9 +598,11 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
         {scored.map(({ record, index }) => {
           const x = xOf(record.pleasure_score ?? 0);
           const y = yOf(record.importance_score ?? 0);
+          const isCompletedPlan = !!record.planned_activity_id && completedPlanIds.has(record.planned_activity_id);
           return (
             <G key={`${record.timestamp}-${index}`}>
               <Circle cx={x} cy={y} r={8} fill="#fb923c" opacity={0.22} />
+              {isCompletedPlan && <Circle cx={x} cy={y} r={8.5} fill="none" stroke="#16a34a" strokeWidth={2} />}
               <Circle cx={x} cy={y} r={4.5} fill="#f97316" />
               <SvgText x={x} y={y - 10} fontSize={9} fill="#374151" textAnchor="middle" fontWeight="bold">{index}</SvgText>
             </G>
@@ -560,18 +623,24 @@ function PleasureImportanceScatter({ records }: { records: ScatterRecord[] }) {
         {quadrants.map(q => (
           <View key={`${q.key}-records`} className="mb-2">
             <Text className="text-xs font-semibold text-gray-500 mb-1">{q.label}</Text>
-            {grouped[q.key].length > 0 ? grouped[q.key].map(({ record, index }) => (
-              <View key={`${record.timestamp}-legend-${index}`} className="flex-row items-center mb-1.5">
-                <Text className="text-xs font-bold text-orange-500 w-5">{index}</Text>
-                <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || '活动'}</Text>
-                <Text className="text-xs text-gray-400 ml-2">愉悦 {record.pleasure_score} · 重要 {record.importance_score}</Text>
-              </View>
-            )) : (
+            {grouped[q.key].length > 0 ? grouped[q.key].map(({ record, index }) => {
+              const isCompletedPlan = !!record.planned_activity_id && completedPlanIds.has(record.planned_activity_id);
+              return (
+                <View key={`${record.timestamp}-legend-${index}`} className="flex-row items-center mb-1.5">
+                  <Text className="text-xs font-bold text-orange-500 w-5">{index}</Text>
+                  <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || '活动'}</Text>
+                  {isCompletedPlan && <Text className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded-md mr-1">计划完成</Text>}
+                  <Text className="text-xs text-gray-400 ml-2">愉悦 {record.pleasure_score} · 重要 {record.importance_score}</Text>
+                </View>
+              );
+            }) : (
               <Text className="text-xs text-gray-300 mb-1.5">暂无活动</Text>
             )}
           </View>
         ))}
       </View>
+
+      <PlanListSection plannedActivities={plannedActivities} completedPlansWithoutPoint={completedPlansWithoutPoint} />
     </View>
   );
 }
@@ -696,6 +765,7 @@ export default function HistoryScreen() {
   const [weekStats, setWeekStats] = useState<WeekStats | null>(null);
   const [weekRecords, setWeekRecords] = useState<MoodRecord[]>([]);
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
+  const [plannedActivities, setPlannedActivities] = useState<PlannedActivity[]>([]);
   const [loading, setLoading] = useState(false);
   const [todayMoodScore, setTodayMoodScore] = useState<number | null>(null);
   const [savingMood, setSavingMood] = useState(false);
@@ -708,19 +778,32 @@ export default function HistoryScreen() {
       // Stats and radar fetched independently — radar failure won't break the charts
       const period = statsTab === 'today' ? 'day' : statsTab === 'week' ? 'week' : 'month';
       if (statsTab === 'today') {
-        const stats = await api.getStatsToday(userId);
+        const today = formatLocalDate(new Date());
+        const [stats, plans] = await Promise.all([
+          api.getStatsToday(userId),
+          api.getPlanned(today, userId).catch(() => []),
+        ]);
         setDayStats(stats);
+        setPlannedActivities(plans);
         setTodayMoodScore(stats.daily_mood_score ?? null);
       } else if (statsTab === 'week') {
         const { startDate, endDate } = getCurrentWeekRange();
-        const [stats, records] = await Promise.all([
+        const [stats, records, plans] = await Promise.all([
           api.getStatsWeek(userId),
           api.listRecordsRange(startDate, endDate, userId),
+          api.listPlannedRange(startDate, endDate, userId).catch(() => []),
         ]);
         setWeekStats(stats);
         setWeekRecords(records.slice().reverse());
+        setPlannedActivities(plans);
       } else {
-        setMonthStats(await api.getStatsMonth(userId));
+        const { startDate, endDate } = getCurrentMonthRange();
+        const [stats, plans] = await Promise.all([
+          api.getStatsMonth(userId),
+          api.listPlannedRange(startDate, endDate, userId).catch(() => []),
+        ]);
+        setMonthStats(stats);
+        setPlannedActivities(plans);
       }
       api.getDomainRadar(period, userId).then(setRadarData).catch(() => {});
     } finally { setLoading(false); }
@@ -816,8 +899,8 @@ export default function HistoryScreen() {
                       {todayMoodScore != null ? `总体情绪 ${todayMoodScore}/10` : '总体情绪未评分'}
                     </Text>
                   </View>
-                  <Text className="text-xs text-gray-400 mb-3">每个点代表一条活动记录，位置由愉悦感和重要性评分决定</Text>
-                  <PleasureImportanceScatter records={dayStats.records} />
+                  <Text className="text-xs text-gray-400 mb-3">每个点代表一条活动记录，绿色描边表示已完成的计划活动</Text>
+                  <PleasureImportanceScatter records={dayStats.records} plannedActivities={plannedActivities} />
                 </View>
 
                 {radarData && (
@@ -852,7 +935,7 @@ export default function HistoryScreen() {
                   <Text className="text-xs text-gray-400 mb-3">
                     你可以增加愉悦且重要的活动，并平衡高愉悦低重要和低愉悦高重要的活动，减少低愉悦低重要的活动。
                   </Text>
-                  <PleasureImportanceScatter records={weekRecords} />
+                  <PleasureImportanceScatter records={weekRecords} plannedActivities={plannedActivities} />
                 </View>
 
                 {radarData && (
@@ -893,6 +976,14 @@ export default function HistoryScreen() {
                     showEvery={5}
                   />
                 </View>
+
+                {plannedActivities.length > 0 && (
+                  <View className="bg-white rounded-2xl p-4 mb-4">
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">本月计划活动</Text>
+                    <Text className="text-xs text-gray-400 mb-3">查看哪些计划已经完成，哪些还需要调整</Text>
+                    <PlanListSection plannedActivities={plannedActivities} />
+                  </View>
+                )}
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">

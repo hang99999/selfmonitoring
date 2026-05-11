@@ -196,12 +196,19 @@ def delete_activity(activity_id: str, db: Session = Depends(get_db)):
 def list_planned(
     user_id: str = Query(default="default_user"),
     date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    start_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
+    end_date: Optional[str] = Query(default=None, description="YYYY-MM-DD"),
     db: Session = Depends(get_db),
 ):
     query = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id)
     if date:
         query = query.filter(PlannedActivity.scheduled_date == date)
-    return query.order_by(PlannedActivity.scheduled_time.asc().nulls_last()).all()
+    else:
+        if start_date:
+            query = query.filter(PlannedActivity.scheduled_date >= start_date)
+        if end_date:
+            query = query.filter(PlannedActivity.scheduled_date <= end_date)
+    return query.order_by(PlannedActivity.scheduled_date.asc(), PlannedActivity.scheduled_time.asc().nulls_last()).all()
 
 
 @router.post("/planned", response_model=PlannedActivityResponse)

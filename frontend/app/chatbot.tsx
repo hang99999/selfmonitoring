@@ -11,7 +11,10 @@ import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
 import { useUserId } from '../src/userStore';
-import type { ChatMessage, ChatSession, UserState, TreatmentProgressData, LifeDomain, MoodRecord, Value, Activity } from '../src/types';
+import type {
+  ChatMessage, ChatSession, UserState, TreatmentProgressData, LifeDomain,
+  MoodRecord, Value, Activity, PlannedActivity,
+} from '../src/types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,15 +77,50 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
   const [name, setName] = useState(defaultName);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [libraryActivities, setLibraryActivities] = useState<Activity[]>([]);
+  const [domains, setDomains] = useState<LifeDomain[]>([]);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
   const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const [date, setDate] = useState(fmt(tomorrow));
+
+  useEffect(() => {
+    api.getDomains(userId).then(setDomains).catch(() => {});
+  }, [userId]);
+
+  const handleNameChange = (text: string) => {
+    setName(text);
+    setSelectedActivity(null);
+  };
+
+  const chooseActivity = (activity: Activity) => {
+    setName(activity.name);
+    setSelectedActivity(activity);
+    setSelectedDomainId(activity.life_domain_id ?? null);
+    setShowLibrary(false);
+  };
+
+  const chooseDomain = (domainId: string | null) => {
+    setSelectedDomainId(domainId);
+    if (selectedActivity && selectedActivity.life_domain_id !== domainId) {
+      setSelectedActivity(null);
+    }
+  };
 
   const submit = async () => {
     if (!name.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await api.createPlanned({ activity_name: name.trim(), scheduled_date: date, user_id: userId });
+      await api.createPlanned({
+        activity_name: name.trim(),
+        scheduled_date: date,
+        activity_id: selectedActivity?.id,
+        life_domain_id: selectedActivity?.life_domain_id ?? selectedDomainId ?? undefined,
+        value_id: selectedActivity?.value_id,
+        user_id: userId,
+      });
       setDone(true);
       setTimeout(onClose, 1500);
     } finally { setSubmitting(false); }
@@ -100,9 +138,73 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
         ) : (
           <>
             <Text className="font-bold text-gray-800 text-base mb-4">计划这项活动</Text>
-            <TextInput value={name} onChangeText={setName} autoFocus
+            <TextInput value={name} onChangeText={handleNameChange} autoFocus
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
             />
+            <TouchableOpacity
+              onPress={() => {
+                setShowLibrary(v => !v);
+                if (!showLibrary) api.getActivities(userId).then(setLibraryActivities).catch(() => {});
+              }}
+            >
+              <Text className="text-xs text-indigo-500 mb-3">
+                {showLibrary ? '收起活动库' : '从活动库选取'}
+              </Text>
+            </TouchableOpacity>
+            {showLibrary && (
+              <View className="border border-gray-200 rounded-xl mb-4 max-h-32 overflow-hidden">
+                <ScrollView>
+                  {libraryActivities.length === 0
+                    ? <Text className="text-xs text-gray-400 px-3 py-3 text-center">活动库为空</Text>
+                    : libraryActivities.map(activity => (
+                        <TouchableOpacity
+                          key={activity.id}
+                          onPress={() => chooseActivity(activity)}
+                          className="px-3 py-2.5 border-b border-gray-100"
+                        >
+                          <Text className="text-sm text-gray-700">{activity.name}</Text>
+                        </TouchableOpacity>
+                      ))
+                  }
+                </ScrollView>
+              </View>
+            )}
+            {domains.length > 0 && (
+              <>
+                <Text className="text-xs font-medium text-gray-500 mb-2">生活领域（可选）</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      onPress={() => chooseDomain(null)}
+                      className="px-3 py-2 rounded-xl border"
+                      style={{
+                        backgroundColor: selectedDomainId === null ? '#6366f1' : '#fff',
+                        borderColor: selectedDomainId === null ? '#6366f1' : '#e5e7eb',
+                      }}
+                    >
+                      <Text style={{ color: selectedDomainId === null ? '#fff' : '#4b5563' }} className="text-xs font-medium">
+                        其他
+                      </Text>
+                    </TouchableOpacity>
+                    {domains.map(domain => (
+                      <TouchableOpacity
+                        key={domain.id}
+                        onPress={() => chooseDomain(domain.id)}
+                        className="px-3 py-2 rounded-xl border"
+                        style={{
+                          backgroundColor: selectedDomainId === domain.id ? '#6366f1' : '#fff',
+                          borderColor: selectedDomainId === domain.id ? '#6366f1' : '#e5e7eb',
+                        }}
+                      >
+                        <Text style={{ color: selectedDomainId === domain.id ? '#fff' : '#4b5563' }} className="text-xs font-medium">
+                          {domain.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
+            )}
             <View className="flex-row gap-2 mb-5">
               {[fmt(new Date()), fmt(tomorrow)].map(d => (
                 <TouchableOpacity key={d} onPress={() => setDate(d)}
@@ -189,42 +291,81 @@ function Bubble({ msg }: { msg: ChatMessage }) {
 
 type S2ActionMessage = (msg: string) => void;
 
-function S2ScatterCard({ progress, userId }: { progress: TreatmentProgressData | null; userId: string }) {
+function S2ScatterCard({
+  progress, userId, includePlans = false, title = '上一阶段以来的活动分布',
+}: {
+  progress: TreatmentProgressData | null;
+  userId: string;
+  includePlans?: boolean;
+  title?: string;
+}) {
   const [records, setRecords] = useState<MoodRecord[]>([]);
+  const [plans, setPlans] = useState<PlannedActivity[]>([]);
   const [loading, setLoading] = useState(false);
   const { width } = useWindowDimensions();
 
   useEffect(() => {
     if (!progress?.phase_scatter_start_date || !progress.phase_scatter_end_date) return;
     setLoading(true);
-    api.listRecordsRange(progress.phase_scatter_start_date, progress.phase_scatter_end_date, userId, 80)
-      .then(setRecords)
-      .catch(() => setRecords([]))
+    const start = progress.phase_scatter_start_date;
+    const end = progress.phase_scatter_end_date;
+    Promise.all([
+      api.listRecordsRange(start, end, userId, 80).catch(() => []),
+      includePlans ? api.listPlannedRange(start, end, userId).catch(() => []) : Promise.resolve([]),
+    ])
+      .then(([nextRecords, nextPlans]) => {
+        setRecords(nextRecords);
+        setPlans(nextPlans);
+      })
+      .catch(() => {
+        setRecords([]);
+        setPlans([]);
+      })
       .finally(() => setLoading(false));
-  }, [progress?.phase_scatter_start_date, progress?.phase_scatter_end_date, userId]);
+  }, [progress?.phase_scatter_start_date, progress?.phase_scatter_end_date, userId, includePlans]);
 
   const chartW = Math.max(280, width - 64);
-  const chartH = 230;
+  const chartH = 250;
   const PL = 34, PR = 18, PT = 24, PB = 34;
   const innerW = chartW - PL - PR;
   const innerH = chartH - PT - PB;
   const scored = records
     .filter(r => r.pleasure_score != null && r.importance_score != null)
     .map((record, index) => ({ record, index: index + 1 }));
+  const completedPlanIds = new Set(plans.filter(p => p.completed).map(p => p.id));
+  const incompletePlans = plans.filter(p => !p.completed);
+  const completedPlansWithoutPoint = plans.filter(
+    p => p.completed && !scored.some(({ record }) => record.planned_activity_id === p.id),
+  );
 
   const clamp = (v: number) => Math.max(0, Math.min(10, v));
   const xOf = (v: number) => PL + (clamp(v) / 10) * innerW;
   const yOf = (v: number) => PT + innerH - (clamp(v) / 10) * innerH;
-  const count = (pred: (r: MoodRecord) => boolean) => scored.filter(({ record }) => pred(record)).length;
-  const highBoth = count(r => (r.pleasure_score ?? 0) >= 5 && (r.importance_score ?? 0) >= 5);
-  const pleasantOnly = count(r => (r.pleasure_score ?? 0) >= 5 && (r.importance_score ?? 0) < 5);
-  const importantOnly = count(r => (r.pleasure_score ?? 0) < 5 && (r.importance_score ?? 0) >= 5);
-  const lowBoth = Math.max(0, scored.length - highBoth - pleasantOnly - importantOnly);
+  const quadrants = [
+    { key: 'highBoth', label: '高愉悦高重要', color: '#16a34a' },
+    { key: 'importantOnly', label: '低愉悦高重要', color: '#6366f1' },
+    { key: 'pleasantOnly', label: '高愉悦低重要', color: '#f97316' },
+    { key: 'lowBoth', label: '低愉悦低重要', color: '#9ca3af' },
+  ] as const;
+  const grouped = quadrants.reduce<Record<typeof quadrants[number]['key'], typeof scored>>((acc, q) => {
+    acc[q.key] = [];
+    return acc;
+  }, {} as Record<typeof quadrants[number]['key'], typeof scored>);
+  scored.forEach(item => {
+    const pleasure = item.record.pleasure_score ?? 0;
+    const importance = item.record.importance_score ?? 0;
+    if (pleasure >= 5 && importance >= 5) grouped.highBoth.push(item);
+    else if (pleasure < 5 && importance >= 5) grouped.importantOnly.push(item);
+    else if (pleasure >= 5 && importance < 5) grouped.pleasantOnly.push(item);
+    else grouped.lowBoth.push(item);
+  });
 
   return (
     <View className="bg-white rounded-2xl border border-orange-100 px-4 py-4 mb-3">
-      <Text className="text-xs font-semibold text-orange-500 mb-1">上一阶段以来的活动分布</Text>
-      <Text className="text-xs text-gray-400 mb-3">每个点是一条活动记录，横轴是愉悦感，纵轴是重要性。</Text>
+      <Text className="text-xs font-semibold text-orange-500 mb-1">{title}</Text>
+      <Text className="text-xs text-gray-400 mb-3">
+        每个数字点是一条活动记录，横轴是愉悦感，纵轴是重要性。{includePlans ? '绿色描边表示已完成的计划活动。' : ''}
+      </Text>
       {loading ? (
         <View className="py-8 items-center"><ActivityIndicator color="#f97316" /></View>
       ) : scored.length === 0 ? (
@@ -238,6 +379,7 @@ function S2ScatterCard({ progress, userId }: { progress: TreatmentProgressData |
             <Rect x={xOf(5)} y={PT} width={innerW / 2} height={innerH / 2} fill="#ecfdf5" opacity={0.75} />
             <Rect x={PL} y={PT} width={innerW / 2} height={innerH / 2} fill="#eef2ff" opacity={0.58} />
             <Rect x={xOf(5)} y={yOf(5)} width={innerW / 2} height={innerH / 2} fill="#fff7ed" opacity={0.7} />
+            <Rect x={PL} y={yOf(5)} width={innerW / 2} height={innerH / 2} fill="#f9fafb" opacity={0.76} />
             {[0, 5, 10].map(v => (
               <G key={v}>
                 <Line x1={xOf(v)} y1={PT} x2={xOf(v)} y2={PT + innerH} stroke="#e5e7eb" strokeWidth={v === 5 ? 1.4 : 1} />
@@ -248,32 +390,71 @@ function S2ScatterCard({ progress, userId }: { progress: TreatmentProgressData |
             ))}
             <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">愉悦感</SvgText>
             <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>重要性</SvgText>
+            <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">低愉悦高重要</SvgText>
+            <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">高愉悦高重要</SvgText>
+            <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">低愉悦低重要</SvgText>
+            <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">高愉悦低重要</SvgText>
             {scored.map(({ record, index }) => {
               const x = xOf(record.pleasure_score ?? 0);
               const y = yOf(record.importance_score ?? 0);
+              const isCompletedPlan = !!record.planned_activity_id && completedPlanIds.has(record.planned_activity_id);
               return (
                 <G key={`${record.id}-${index}`}>
                   <Circle cx={x} cy={y} r={7} fill="#fb923c" opacity={0.2} />
+                  {isCompletedPlan && <Circle cx={x} cy={y} r={8.5} fill="none" stroke="#16a34a" strokeWidth={2} />}
                   <Circle cx={x} cy={y} r={4.5} fill="#f97316" />
                   <SvgText x={x} y={y - 10} fontSize={9} fill="#374151" textAnchor="middle" fontWeight="bold">{index}</SvgText>
                 </G>
               );
             })}
           </Svg>
-          <View className="flex-row flex-wrap gap-2">
-            {[
-              ['高愉悦高重要', highBoth, '#16a34a'],
-              ['低愉悦高重要', importantOnly, '#6366f1'],
-              ['高愉悦低重要', pleasantOnly, '#f97316'],
-              ['低愉悦低重要', lowBoth, '#9ca3af'],
-            ].map(([label, n, color]) => (
-              <View key={String(label)} className="px-2 py-1 rounded-lg bg-gray-50 flex-row items-center">
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: String(color) }} />
-                <Text className="text-xs text-gray-500 ml-1">{label} {n}</Text>
+          <View className="flex-row flex-wrap gap-2 mb-3">
+            {quadrants.map(q => (
+              <View key={q.key} className="px-2 py-1 rounded-lg bg-gray-50 flex-row items-center">
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: q.color }} />
+                <Text className="text-xs text-gray-500 ml-1">{q.label} {grouped[q.key].length}</Text>
+              </View>
+            ))}
+          </View>
+          <View className="border-t border-gray-100 pt-3">
+            {quadrants.map(q => (
+              <View key={`${q.key}-records`} className="mb-2">
+                <Text className="text-xs font-semibold text-gray-500 mb-1">{q.label}</Text>
+                {grouped[q.key].length > 0 ? grouped[q.key].map(({ record, index }) => {
+                  const isCompletedPlan = !!record.planned_activity_id && completedPlanIds.has(record.planned_activity_id);
+                  return (
+                    <View key={`${record.id}-legend-${index}`} className="flex-row items-center mb-1.5">
+                      <Text className="text-xs font-bold text-orange-500 w-5">{index}</Text>
+                      <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || '活动'}</Text>
+                      {isCompletedPlan && <Text className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded-md mr-1">计划完成</Text>}
+                      <Text className="text-xs text-gray-400">愉悦 {record.pleasure_score} · 重要 {record.importance_score}</Text>
+                    </View>
+                  );
+                }) : (
+                  <Text className="text-xs text-gray-300 mb-1.5">暂无活动</Text>
+                )}
               </View>
             ))}
           </View>
         </>
+      )}
+      {includePlans && !loading && (
+        <View className="border-t border-gray-100 pt-3 mt-1">
+          <Text className="text-xs font-semibold text-gray-500 mb-2">未完成的计划</Text>
+          {incompletePlans.length > 0 ? incompletePlans.map(plan => (
+            <View key={plan.id} className="flex-row items-center mb-1.5">
+              <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{plan.activity_name}</Text>
+              <Text className="text-xs text-gray-400">{plan.scheduled_date}</Text>
+            </View>
+          )) : (
+            <Text className="text-xs text-gray-300 mb-1.5">这个范围内没有未完成的计划</Text>
+          )}
+          {completedPlansWithoutPoint.length > 0 && (
+            <Text className="text-xs text-gray-400 mt-2">
+              另有 {completedPlansWithoutPoint.length} 个已完成计划没有评分记录，暂时不显示在图上。
+            </Text>
+          )}
+        </View>
       )}
     </View>
   );
@@ -495,6 +676,29 @@ function S2InlineFlow({
           <Text className="text-xs text-gray-600 leading-relaxed">活动已经进活动库了。接下来可以回到主页点“计划活动”，把它安排到具体日期和时间里。</Text>
         </View>
       )}
+    </View>
+  );
+}
+
+function S3InlineFlow({
+  progress, userId, phaseStep,
+}: {
+  progress: TreatmentProgressData | null;
+  userId: string;
+  phaseStep: number;
+}) {
+  const showReviewCard = phaseStep <= 0;
+
+  if (!showReviewCard) return null;
+
+  return (
+    <View className="mt-1 mb-2">
+      <S2ScatterCard
+        progress={progress}
+        userId={userId}
+        includePlans
+        title="本阶段活动与计划回顾"
+      />
     </View>
   );
 }
@@ -975,6 +1179,7 @@ export default function ChatbotScreen() {
   const [showCrisis, setShowCrisis] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [detectedActivity, setDetectedActivity] = useState<{ type: 'completed' | 'planned'; name: string } | null>(null);
+  const [pendingActivityName, setPendingActivityName] = useState('');
   const [showRecord, setShowRecord] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const listRef = useRef<FlatList>(null);
@@ -1227,6 +1432,27 @@ export default function ChatbotScreen() {
             </View>
           )}
 
+          {currentIntent === 'phase:first_review' && (
+            <View className="px-4 pt-3 bg-orange-50">
+              <S3InlineFlow
+                progress={treatmentProgress}
+                userId={userId}
+                phaseStep={currentPhaseStep}
+              />
+            </View>
+          )}
+
+          {currentIntent === 'phase:review_cycle' && (
+            <View className="px-4 pt-3 bg-orange-50">
+              <S2ScatterCard
+                progress={treatmentProgress}
+                userId={userId}
+                includePlans
+                title="本周活动与计划回顾"
+              />
+            </View>
+          )}
+
           <FlatList
             ref={listRef}
             data={allItems}
@@ -1248,8 +1474,8 @@ export default function ChatbotScreen() {
             <ActivityBanner
               name={detectedActivity.name}
               type={detectedActivity.type}
-              onRecord={() => { setDetectedActivity(null); setShowRecord(true); }}
-              onPlan={() => { setDetectedActivity(null); setShowPlan(true); }}
+              onRecord={() => { setPendingActivityName(detectedActivity.name); setDetectedActivity(null); setShowRecord(true); }}
+              onPlan={() => { setPendingActivityName(detectedActivity.name); setDetectedActivity(null); setShowPlan(true); }}
               onDismiss={() => setDetectedActivity(null)}
             />
           )}
@@ -1290,15 +1516,15 @@ export default function ChatbotScreen() {
       {showRecord && (
         <RecordModal
           visible={showRecord}
-          onClose={() => setShowRecord(false)}
-          onRecordSubmitted={() => setShowRecord(false)}
-          prefillActivity={detectedActivity?.name}
+          onClose={() => { setShowRecord(false); setPendingActivityName(''); }}
+          onRecordSubmitted={() => { setShowRecord(false); setPendingActivityName(''); }}
+          prefillActivity={pendingActivityName}
         />
       )}
       {showPlan && (
         <QuickPlanModal
-          defaultName={detectedActivity?.name ?? ''}
-          onClose={() => setShowPlan(false)}
+          defaultName={pendingActivityName}
+          onClose={() => { setShowPlan(false); setPendingActivityName(''); }}
         />
       )}
     </SafeAreaView>

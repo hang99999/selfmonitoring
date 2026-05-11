@@ -167,6 +167,15 @@ export const api = {
     return request<PlannedActivity[]>(`/api/activity/planned?${params}`);
   },
 
+  listPlannedRange: (startDate: string, endDate: string, userId = 'default_user') => {
+    const params = new URLSearchParams({
+      user_id: userId,
+      start_date: startDate,
+      end_date: endDate,
+    });
+    return request<PlannedActivity[]>(`/api/activity/planned?${params}`);
+  },
+
   createPlanned: (data: {
     activity_name: string;
     scheduled_date: string;

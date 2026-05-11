@@ -111,6 +111,7 @@ async def today_stats(
             pleasure_score=r.pleasure_score,
             importance_score=r.importance_score,
             activity=r.activity,
+            planned_activity_id=r.planned_activity_id,
         )
         for r in records
     ]

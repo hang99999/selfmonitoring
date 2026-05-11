@@ -169,6 +169,7 @@ class TodayStatsRecord(BaseModel):
     pleasure_score: Optional[float] = None
     importance_score: Optional[float] = None
     activity: Optional[str] = None
+    planned_activity_id: Optional[str] = None
 
 
 class TodayStatsResponse(BaseModel):

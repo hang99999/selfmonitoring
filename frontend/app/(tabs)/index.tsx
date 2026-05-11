@@ -9,7 +9,7 @@ import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
 import { useUserId } from '../../src/userStore';
-import type { Activity, TreatmentProgressData, Supporter } from '../../src/types';
+import type { Activity, LifeDomain, TreatmentProgressData, Supporter } from '../../src/types';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -38,14 +38,37 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
   const [done, setDone] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [libraryActivities, setLibraryActivities] = useState<Activity[]>([]);
+  const [domains, setDomains] = useState<LifeDomain[]>([]);
+  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
   const [supporters, setSupporters] = useState<Supporter[]>([]);
   const [selectedSupporterIds, setSelectedSupporterIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (visible) {
       api.getSupporters(userId).then(setSupporters).catch(() => {});
+      api.getDomains(userId).then(setDomains).catch(() => {});
     }
   }, [visible, userId]);
+
+  const handleNameChange = (text: string) => {
+    setName(text);
+    setSelectedActivity(null);
+  };
+
+  const chooseActivity = (activity: Activity) => {
+    setName(activity.name);
+    setSelectedActivity(activity);
+    setSelectedDomainId(activity.life_domain_id ?? null);
+    setShowLibrary(false);
+  };
+
+  const chooseDomain = (domainId: string | null) => {
+    setSelectedDomainId(domainId);
+    if (selectedActivity && selectedActivity.life_domain_id !== domainId) {
+      setSelectedActivity(null);
+    }
+  };
 
   const toggleSupporter = (id: string) => {
     setSelectedSupporterIds(prev => {
@@ -70,6 +93,9 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
         activity_name: name.trim(),
         scheduled_date: selectedDate,
         scheduled_time: allDay ? undefined : `${String(selectedHour).padStart(2, '0')}:00`,
+        activity_id: selectedActivity?.id,
+        life_domain_id: selectedActivity?.life_domain_id ?? selectedDomainId ?? undefined,
+        value_id: selectedActivity?.value_id,
         user_id: userId,
       });
       await Promise.all(
@@ -78,6 +104,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
       setDone(true);
       setTimeout(() => {
         setDone(false); setName(''); setAllDay(true); setSelectedHour(9);
+        setSelectedActivity(null); setSelectedDomainId(null);
         setSelectedSupporterIds(new Set());
         onClose();
       }, 1600);
@@ -107,7 +134,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
             <Text className="text-sm font-medium text-gray-600 mb-2">活动名称</Text>
             <TextInput
               value={name}
-              onChangeText={setName}
+              onChangeText={handleNameChange}
               placeholder="例如：出门散步30分钟"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-1"
               placeholderTextColor="#9ca3af"
@@ -130,7 +157,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
                     : libraryActivities.map(a => (
                         <TouchableOpacity
                           key={a.id}
-                          onPress={() => { setName(a.name); setShowLibrary(false); }}
+                          onPress={() => chooseActivity(a)}
                           className="px-3 py-2.5 border-b border-gray-100"
                         >
                           <Text className="text-sm text-gray-700">{a.name}</Text>
@@ -139,6 +166,43 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
                   }
                 </ScrollView>
               </View>
+            )}
+
+            {domains.length > 0 && (
+              <>
+                <Text className="text-sm font-medium text-gray-600 mb-2">生活领域（可选）</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      onPress={() => chooseDomain(null)}
+                      className="px-3 py-2 rounded-xl border"
+                      style={{
+                        backgroundColor: selectedDomainId === null ? '#6366f1' : '#fff',
+                        borderColor: selectedDomainId === null ? '#6366f1' : '#e5e7eb',
+                      }}
+                    >
+                      <Text style={{ color: selectedDomainId === null ? '#fff' : '#4b5563' }} className="text-sm font-medium">
+                        其他
+                      </Text>
+                    </TouchableOpacity>
+                    {domains.map(domain => (
+                      <TouchableOpacity
+                        key={domain.id}
+                        onPress={() => chooseDomain(domain.id)}
+                        className="px-3 py-2 rounded-xl border"
+                        style={{
+                          backgroundColor: selectedDomainId === domain.id ? '#6366f1' : '#fff',
+                          borderColor: selectedDomainId === domain.id ? '#6366f1' : '#e5e7eb',
+                        }}
+                      >
+                        <Text style={{ color: selectedDomainId === domain.id ? '#fff' : '#4b5563' }} className="text-sm font-medium">
+                          {domain.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </>
             )}
 
             <Text className="text-sm font-medium text-gray-600 mb-2">日期</Text>

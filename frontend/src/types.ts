@@ -161,6 +161,7 @@ export interface DayStats {
     importance_score?: number;
     activity?: string;
     thought?: string;
+    planned_activity_id?: string;
   }[];
   count: number;
   avg_pleasure?: number;
