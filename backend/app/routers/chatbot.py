@@ -45,26 +45,23 @@ def _is_crisis(text: str) -> bool:
 
 TRIGGER_PRIORITY = [
     "monitoring_troubleshoot",
-    "values_quality_guidance",
-    "difficulty_adjustment_down",
-    "busy_but_depressed",
-    "desynchrony_explanation",
     "life_area_balance",
+    "support_contract_review",
     "values_review",
-    "difficulty_adjustment_up",
-    "maintenance_planning",
+    "first_plan_completed_celebration",
+    "plan_completed_7_celebration",
 ]
+
+CONVERSATION_TRIGGERS = {"monitoring_troubleshoot"}
+MESSAGE_ONLY_TRIGGERS = set(TRIGGER_PRIORITY) - CONVERSATION_TRIGGERS
 
 TRIGGER_COOLDOWNS = {
     "monitoring_troubleshoot": 7,
-    "values_quality_guidance": 7,
-    "busy_but_depressed": 14,
-    "desynchrony_explanation": 14,
     "life_area_balance": 14,
+    "support_contract_review": 21,
     "values_review": 21,
-    "difficulty_adjustment_up": 14,
-    "difficulty_adjustment_down": 7,
-    "maintenance_planning": 30,
+    "first_plan_completed_celebration": 9999,
+    "plan_completed_7_celebration": 9999,
 }
 
 
@@ -357,43 +354,42 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
             return True
         return (now - last).days >= days
 
+    def _days_since_log(trigger_type: str) -> Optional[int]:
+        last = last_trigger_dates.get(trigger_type)
+        return (now - last).days if last is not None else None
+
     active_triggers = []
 
     if (days_since_registration > 2 and consecutive_days_no_record >= 3
             and _cooldown_ok("monitoring_troubleshoot")):
         active_triggers.append("monitoring_troubleshoot")
 
-    if _cooldown_ok("busy_but_depressed") and avg_daily_records >= 5:
-        if avg_enjoyment_score is not None and avg_enjoyment_score < 4:
-            active_triggers.append("busy_but_depressed")
-        elif high_importance_low_enjoyment_ratio > 0.70:
-            active_triggers.append("busy_but_depressed")
-
-    if (completion_rate_this_week >= 0.70 and completion_rate_last_week >= 0.70
-            and mood_trend != "improving" and _cooldown_ok("desynchrony_explanation")):
-        active_triggers.append("desynchrony_explanation")
-
     if _cooldown_ok("life_area_balance") and total_acts > 0:
         if dominant_ratio > 0.70 or len(life_areas_without) >= 2:
             active_triggers.append("life_area_balance")
 
-    if (activities_quality_issue is not None or values_quality_issue is not None) \
-            and _cooldown_ok("values_quality_guidance"):
-        active_triggers.append("values_quality_guidance")
+    days_since_first_review = _days_since_log("phase_session:first_review")
+    if (days_since_first_review is not None and days_since_first_review >= 21
+            and _cooldown_ok("support_contract_review")):
+        active_triggers.append("support_contract_review")
 
-    if days_since_registration >= 28 and _cooldown_ok("values_review"):
+    days_since_setup = _days_since_log("phase_session:setup")
+    if (days_since_setup is not None and days_since_setup >= 21
+            and _cooldown_ok("values_review")):
         active_triggers.append("values_review")
 
-    if (consecutive_high >= 2 and mood_trend == "improving"
-            and _cooldown_ok("difficulty_adjustment_up")):
-        active_triggers.append("difficulty_adjustment_up")
+    completed_planned_activities_ever = db.query(PlannedActivity).filter(
+        PlannedActivity.user_id == user_id,
+        PlannedActivity.completed == True,
+    ).count()
 
-    if consecutive_low >= 2 and _cooldown_ok("difficulty_adjustment_down"):
-        active_triggers.append("difficulty_adjustment_down")
+    if (completed_planned_activities_ever >= 1
+            and _cooldown_ok("first_plan_completed_celebration")):
+        active_triggers.append("first_plan_completed_celebration")
 
-    if (consecutive_good_mood >= 4 and completion_rate_this_week >= 0.70
-            and _cooldown_ok("maintenance_planning")):
-        active_triggers.append("maintenance_planning")
+    if (completed_planned_activities_ever >= 7
+            and _cooldown_ok("plan_completed_7_celebration")):
+        active_triggers.append("plan_completed_7_celebration")
 
     active_triggers.sort(key=lambda t: TRIGGER_PRIORITY.index(t) if t in TRIGGER_PRIORITY else 99)
     top_trigger = active_triggers[:1]
@@ -1029,8 +1025,14 @@ async def get_treatment_progress(
     state = _compute_user_state(db, user_id)
     active_trigger = state["active_triggers"][0] if state["active_triggers"] else None
     # Also surface any dev-injected trigger
+    is_debug_trigger = False
     if user_id in _debug_triggers:
         active_trigger = _debug_triggers[user_id]
+        is_debug_trigger = True
+
+    if (active_trigger in MESSAGE_ONLY_TRIGGERS
+            and not is_debug_trigger):
+        _record_trigger(db, user_id, active_trigger)
 
     # Triggers fired in the last 24 hours (show as "recently completed")
     cutoff = datetime.now() - timedelta(hours=24)
@@ -1080,7 +1082,7 @@ class TriggerDebugRequest(BaseModel):
 
 @router.put("/treatment/debug-trigger")
 async def debug_set_trigger(req: TriggerDebugRequest):
-    """[开发用] 注入一个触发对话，下次发送消息时生效（忽略条件和冷却期）。trigger=null 清除。"""
+    """[开发用] 注入一个触发消息/对话（忽略条件和冷却期）。trigger=null 清除。"""
     valid = set(TRIGGER_PRIORITY)
     if req.trigger is not None and req.trigger not in valid:
         return {"ok": False, "error": f"trigger must be one of {valid}"}

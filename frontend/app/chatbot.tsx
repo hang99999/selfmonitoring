@@ -740,14 +740,11 @@ const INTENT_LABELS: Record<string, string> = {
   'phase:first_review':                 'Week 3 · 首次回顾',
   'phase:review_cycle':                 '本周回顾',
   'trigger:monitoring_troubleshoot':    '监测疏通',
-  'trigger:values_quality_guidance':    '价值观质量引导',
-  'trigger:busy_but_depressed':         '忙但抑郁',
-  'trigger:desynchrony_explanation':    '去异步解释',
   'trigger:life_area_balance':          '生活领域平衡',
+  'trigger:support_contract_review':    '支持者复习',
   'trigger:values_review':              '价值观复习',
-  'trigger:difficulty_adjustment_up':   '难度提升',
-  'trigger:difficulty_adjustment_down': '难度降低',
-  'trigger:maintenance_planning':       '维持规划',
+  'trigger:first_plan_completed_celebration': '首次计划完成',
+  'trigger:plan_completed_7_celebration':     '计划完成 7 次',
 };
 
 const PHASE_SESSION_DESCRIPTIONS: Record<string, string> = {
@@ -759,15 +756,14 @@ const PHASE_SESSION_DESCRIPTIONS: Record<string, string> = {
 
 const TRIGGER_PREVIEWS: Record<string, string> = {
   monitoring_troubleshoot:  '好几天没看到你的记录了，发生什么了吗？',
-  values_quality_guidance:  '我看了一下你的活动和价值观，想和你聊聊是不是更合适一些',
-  busy_but_depressed:       '你最近做了好多事，但我感觉你的心情还没跟上——想聊聊吗？',
-  desynchrony_explanation:  '你一直在坚持做活动，情绪暂时还没变化是很正常的，我来解释一下',
-  life_area_balance:        '我注意到你的活动集中在某几个方面，其他领域想不想也试试？',
-  values_review:            '用了一段时间了，我们回顾一下当初定的价值观还合不合适？',
-  difficulty_adjustment_up: '你最近完成得很好！是时候挑战一下更难的活动了',
-  difficulty_adjustment_down: '最近完成率有点低，我们来看看活动是不是太难了',
-  maintenance_planning:     '你已经保持了一段时间的好状态，想聊聊怎么长期维持吗？',
+  life_area_balance:        '最近你的活动大多集中在某个领域。下次计划时，可以试着给一个被忽略的领域安排一个活动。',
+  support_contract_review:  '你用这个 App 已经有一段时间了，可以看看支持者是否还合适，或是否需要新增一位支持者。',
+  values_review:            '你之前填写的价值观和活动可以偶尔回头看看。也许可以更新一下。',
+  first_plan_completed_celebration: '你完成了第一个计划活动。恭喜你：你已经开始把计划带进真实生活了。',
+  plan_completed_7_celebration: '你已经完成了 7 次计划活动。能坚持下来，你真的很棒！你也可以回头看看，哪些活动更容易开始，哪些做完后更有帮助。',
 };
+
+const CONVERSATION_TRIGGERS = new Set(['monitoring_troubleshoot']);
 
 function TreatmentProgressCard({
   data, userId, onPhaseChanged, onStartIntent,
@@ -833,12 +829,14 @@ function TreatmentProgressCard({
           <Text className="text-xs text-blue-500 flex-1">
             小暖：{TRIGGER_PREVIEWS[data.active_trigger]}
           </Text>
-          <TouchableOpacity
-            onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
-            className="px-3 py-1 bg-blue-500 rounded-lg"
-          >
-            <Text className="text-xs text-white font-medium">开始聊</Text>
-          </TouchableOpacity>
+          {CONVERSATION_TRIGGERS.has(data.active_trigger) && (
+            <TouchableOpacity
+              onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
+              className="px-3 py-1 bg-blue-500 rounded-lg"
+            >
+              <Text className="text-xs text-white font-medium">开始聊</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
       {!expanded && !data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
@@ -878,18 +876,15 @@ function TreatmentProgressCard({
           </View>
           {switching && <Text className="text-[10px] text-gray-400">切换中…</Text>}
 
-          <Text className="text-[10px] text-gray-400 font-medium mt-2 mb-1">触发对话（下次发消息生效）</Text>
+          <Text className="text-[10px] text-gray-400 font-medium mt-2 mb-1">触发消息 / 对话</Text>
           <View className="flex-row flex-wrap gap-2">
             {[
               { label: '监测疏通',    trigger: 'monitoring_troubleshoot' },
-              { label: '价值观质量',  trigger: 'values_quality_guidance' },
-              { label: '忙但抑郁',    trigger: 'busy_but_depressed' },
-              { label: '去异步解释',  trigger: 'desynchrony_explanation' },
               { label: '领域平衡',    trigger: 'life_area_balance' },
+              { label: '支持者复习',  trigger: 'support_contract_review' },
               { label: '价值观复习',  trigger: 'values_review' },
-              { label: '难度提升',    trigger: 'difficulty_adjustment_up' },
-              { label: '难度降低',    trigger: 'difficulty_adjustment_down' },
-              { label: '维持规划',    trigger: 'maintenance_planning' },
+              { label: '首次完成',    trigger: 'first_plan_completed_celebration' },
+              { label: '完成7次',     trigger: 'plan_completed_7_celebration' },
             ].map(({ label, trigger }) => (
               <TouchableOpacity
                 key={trigger}
@@ -909,7 +904,7 @@ function TreatmentProgressCard({
             ))}
           </View>
           {pendingTrigger && (
-            <Text className="text-[10px] text-blue-400">已设置：{pendingTrigger} · 发下一条消息时触发</Text>
+            <Text className="text-[10px] text-blue-400">已设置：{pendingTrigger}</Text>
           )}
         </View>
       )}
@@ -1034,14 +1029,18 @@ function TreatmentProgressCard({
           {/* Active trigger card */}
           {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
             <View className="mx-4 mt-1 mb-1 px-3 py-2.5 bg-blue-50 rounded-xl border border-blue-100">
-              <Text className="text-[10px] text-blue-400 font-medium mb-1">小暖想和你聊聊</Text>
+              <Text className="text-[10px] text-blue-400 font-medium mb-1">
+                {CONVERSATION_TRIGGERS.has(data.active_trigger) ? '小暖想和你聊聊' : '小暖提醒'}
+              </Text>
               <Text className="text-xs text-blue-600 mb-2">{TRIGGER_PREVIEWS[data.active_trigger]}</Text>
-              <TouchableOpacity
-                onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
-                className="self-start px-3 py-1 bg-blue-500 rounded-lg"
-              >
-                <Text className="text-xs text-white font-medium">开始聊</Text>
-              </TouchableOpacity>
+              {CONVERSATION_TRIGGERS.has(data.active_trigger) && (
+                <TouchableOpacity
+                  onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
+                  className="self-start px-3 py-1 bg-blue-500 rounded-lg"
+                >
+                  <Text className="text-xs text-white font-medium">开始聊</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
           {/* Recently triggered (completed today) */}
@@ -1360,6 +1359,48 @@ export default function ChatbotScreen() {
 
   const companionName = userState?.companion_name ?? '小暖';
   const allItems: (ChatMessage | 'typing')[] = loading ? [...messages, 'typing'] : messages;
+  const phaseListHeader = (() => {
+    if (currentIntent === 'phase:setup') {
+      return (
+        <View className="mb-2">
+          <S2InlineFlow
+            progress={treatmentProgress}
+            userId={userId}
+            phaseStep={currentPhaseStep}
+            onSubmitMessage={_sendMessage}
+            onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
+          />
+        </View>
+      );
+    }
+
+    if (currentIntent === 'phase:first_review') {
+      return (
+        <View className="mb-2">
+          <S3InlineFlow
+            progress={treatmentProgress}
+            userId={userId}
+            phaseStep={currentPhaseStep}
+          />
+        </View>
+      );
+    }
+
+    if (currentIntent === 'phase:review_cycle') {
+      return (
+        <View className="mb-2">
+          <S2ScatterCard
+            progress={treatmentProgress}
+            userId={userId}
+            includePlans
+            title="本周活动与计划回顾"
+          />
+        </View>
+      );
+    }
+
+    return null;
+  })();
 
   return (
     <SafeAreaView className="flex-1 bg-orange-50" edges={['top']}>
@@ -1420,44 +1461,12 @@ export default function ChatbotScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
-          {currentIntent === 'phase:setup' && (
-            <View className="px-4 pt-3 bg-orange-50">
-              <S2InlineFlow
-                progress={treatmentProgress}
-                userId={userId}
-                phaseStep={currentPhaseStep}
-                onSubmitMessage={_sendMessage}
-                onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
-              />
-            </View>
-          )}
-
-          {currentIntent === 'phase:first_review' && (
-            <View className="px-4 pt-3 bg-orange-50">
-              <S3InlineFlow
-                progress={treatmentProgress}
-                userId={userId}
-                phaseStep={currentPhaseStep}
-              />
-            </View>
-          )}
-
-          {currentIntent === 'phase:review_cycle' && (
-            <View className="px-4 pt-3 bg-orange-50">
-              <S2ScatterCard
-                progress={treatmentProgress}
-                userId={userId}
-                includePlans
-                title="本周活动与计划回顾"
-              />
-            </View>
-          )}
-
           <FlatList
             ref={listRef}
             data={allItems}
             keyExtractor={(_, i) => String(i)}
             contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+            ListHeaderComponent={phaseListHeader}
             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
             ListEmptyComponent={
               <View className="items-center pt-16">
