@@ -183,6 +183,7 @@ export interface DayStats {
   avg_intensity: number;
   avg_pleasure?: number;
   avg_importance?: number;
+  daily_mood_score?: number | null;
 }
 
 export interface DailyDataPoint {

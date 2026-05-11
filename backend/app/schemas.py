@@ -196,6 +196,7 @@ class TodayStatsResponse(BaseModel):
     avg_intensity: Optional[float] = None
     avg_pleasure: Optional[float] = None
     avg_importance: Optional[float] = None
+    daily_mood_score: Optional[float] = None
 
 
 class DailyData(BaseModel):

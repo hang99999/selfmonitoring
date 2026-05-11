@@ -285,7 +285,7 @@ function getCurrentWeekRange() {
 
 // ── Line Chart ────────────────────────────────────────────────────────────────
 
-interface ChartPoint { label: string; pleasure?: number | null; importance?: number | null; }
+interface ChartPoint { label: string; pleasure?: number | null; importance?: number | null; mood?: number | null; }
 
 function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: number }) {
   const { width } = useWindowDimensions();
@@ -352,6 +352,83 @@ function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: nu
           <Text className="text-xs text-gray-400">重要性</Text>
         </View>
       </View>
+    </View>
+  );
+}
+
+function MoodLineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: number }) {
+  const { width } = useWindowDimensions();
+  const chartW = width - 64;
+  const chartH = 170;
+  const PL = 26, PR = 8, PT = 10, PB = 24;
+  const innerW = chartW - PL - PR;
+  const innerH = chartH - PB - PT;
+  const n = data.length;
+  if (n === 0) return null;
+
+  const xOf = (i: number) => PL + (n === 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+  const yOf = (v: number) => PT + innerH - (v / 10) * innerH;
+  const points = data.reduce<string[]>((acc, p, i) => {
+    if (p.mood != null) acc.push(`${xOf(i).toFixed(1)},${yOf(p.mood).toFixed(1)}`);
+    return acc;
+  }, []).join(' ');
+  const gridLines = [2, 4, 6, 8, 10];
+
+  return (
+    <View>
+      <Svg width={chartW} height={chartH}>
+        {gridLines.map(v => (
+          <Line key={v} x1={PL} y1={yOf(v)} x2={chartW - PR} y2={yOf(v)}
+            stroke="#f3f4f6" strokeWidth={1} />
+        ))}
+        {gridLines.map(v => (
+          <SvgText key={v} x={PL - 4} y={yOf(v) + 4}
+            fontSize={8} fill="#d1d5db" textAnchor="end">{v}</SvgText>
+        ))}
+        {data.map((p, i) => {
+          if (i % showEvery !== 0 && i !== n - 1) return null;
+          return (
+            <SvgText key={i} x={xOf(i)} y={chartH - 4}
+              fontSize={8} fill="#9ca3af" textAnchor="middle">{p.label}</SvgText>
+          );
+        })}
+        {points.length > 0 && (
+          <Polyline points={points} fill="none" stroke="#f97316" strokeWidth={2.5} strokeLinejoin="round" />
+        )}
+        {data.map((p, i) => (
+          p.mood != null ? <Circle key={i} cx={xOf(i)} cy={yOf(p.mood)} r={3.5} fill="#f97316" /> : null
+        ))}
+      </Svg>
+      <Text className="text-xs text-gray-400 text-center mt-1">每日总体情绪评分</Text>
+    </View>
+  );
+}
+
+function DailyMoodCard({
+  value, saving, onSelect,
+}: { value: number | null; saving: boolean; onSelect: (score: number) => void }) {
+  return (
+    <View className="bg-white rounded-2xl p-4 mb-4">
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-sm font-semibold text-gray-700">今日总体情绪</Text>
+        <Text className="text-sm font-bold text-orange-500">{value != null ? `${value}/10` : '未评分'}</Text>
+      </View>
+      <Text className="text-xs text-gray-400 mb-3">0 表示最消极，10 表示最积极</Text>
+      <View className="flex-row flex-wrap gap-2">
+        {Array.from({ length: 11 }, (_, score) => (
+          <TouchableOpacity
+            key={score}
+            onPress={() => onSelect(score)}
+            disabled={saving}
+            className={`w-9 h-9 rounded-full items-center justify-center border ${
+              value === score ? 'bg-orange-500 border-orange-500' : 'bg-white border-gray-200'
+            }`}
+          >
+            <Text className={`text-xs font-semibold ${value === score ? 'text-white' : 'text-gray-500'}`}>{score}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {saving && <Text className="text-xs text-gray-400 mt-2">保存中...</Text>}
     </View>
   );
 }
@@ -671,6 +748,8 @@ export default function HistoryScreen() {
   const [weekRecords, setWeekRecords] = useState<MoodRecord[]>([]);
   const [monthStats, setMonthStats] = useState<MonthStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [todayMoodScore, setTodayMoodScore] = useState<number | null>(null);
+  const [savingMood, setSavingMood] = useState(false);
   const [radarData, setRadarData] = useState<DomainRadarItem[] | null>(null);
   const [dailyInsight, setDailyInsight] = useState<InsightReport | null>(null);
   const [weeklyInsight, setWeeklyInsight] = useState<InsightReport | null>(null);
@@ -685,7 +764,9 @@ export default function HistoryScreen() {
       // Stats and radar fetched independently — radar failure won't break the charts
       const period = statsTab === 'today' ? 'day' : statsTab === 'week' ? 'week' : 'month';
       if (statsTab === 'today') {
-        setDayStats(await api.getStatsToday(userId));
+        const stats = await api.getStatsToday(userId);
+        setDayStats(stats);
+        setTodayMoodScore(stats.daily_mood_score ?? null);
       } else if (statsTab === 'week') {
         const { startDate, endDate } = getCurrentWeekRange();
         const [stats, records] = await Promise.all([
@@ -717,6 +798,19 @@ export default function HistoryScreen() {
     try { setWeeklyInsight(await api.getWeeklyInsight(userId)); }
     catch (err) { setInsightError(err instanceof Error ? err.message : '获取失败'); }
     finally { setWeeklyLoading(false); }
+  };
+
+  const handleMoodSelect = async (score: number) => {
+    if (savingMood) return;
+    setSavingMood(true);
+    const date = formatLocalDate(new Date());
+    try {
+      const saved = await api.setDailyMood(date, score, userId);
+      setTodayMoodScore(saved.mood_score);
+      setDayStats(prev => prev ? { ...prev, daily_mood_score: saved.mood_score } : prev);
+    } finally {
+      setSavingMood(false);
+    }
   };
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -784,23 +878,15 @@ export default function HistoryScreen() {
                   ))}
                 </View>
 
-                <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-3">今日趋势</Text>
-                  <LineChart
-                    data={dayStats.records.length > 0
-                      ? dayStats.records.map(r => ({
-                          label: new Date(r.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-                          pleasure: r.pleasure_score,
-                          importance: r.importance_score,
-                        }))
-                      : ['08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00'].map(t => ({ label: t, pleasure: null, importance: null }))
-                    }
-                    showEvery={1}
-                  />
-                </View>
+                <DailyMoodCard value={todayMoodScore} saving={savingMood} onSelect={handleMoodSelect} />
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-1">今日活动分布</Text>
+                  <View className="flex-row items-center justify-between mb-1">
+                    <Text className="text-sm font-semibold text-gray-700">今日活动分布</Text>
+                    <Text className="text-xs font-semibold text-orange-500">
+                      {todayMoodScore != null ? `总体情绪 ${todayMoodScore}/10` : '总体情绪未评分'}
+                    </Text>
+                  </View>
                   <Text className="text-xs text-gray-400 mb-3">每个点代表一条活动记录，位置由愉悦感和重要性评分决定</Text>
                   <PleasureImportanceScatter records={dayStats.records} />
                 </View>
@@ -867,17 +953,6 @@ export default function HistoryScreen() {
                 </View>
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-3">本周趋势</Text>
-                  <LineChart
-                    data={weekStats.daily_data.map(day => {
-                      const d = new Date(day.date + 'T00:00:00');
-                      return { label: `周${weekDays[d.getDay()]}`, pleasure: day.avg_pleasure, importance: day.avg_importance };
-                    })}
-                    showEvery={1}
-                  />
-                </View>
-
-                <View className="bg-white rounded-2xl p-4 mb-4">
                   <Text className="text-sm font-semibold text-gray-700 mb-1">本周活动分布</Text>
                   <Text className="text-xs text-gray-400 mb-3">
                     你可以增加愉悦且重要的活动，并平衡高愉悦低重要和低愉悦高重要的活动，减少低愉悦低重要的活动。
@@ -931,12 +1006,12 @@ export default function HistoryScreen() {
                 </View>
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-3">本月趋势（近30天）</Text>
-                  <LineChart
+                  <Text className="text-sm font-semibold text-gray-700 mb-1">本月总体情绪趋势</Text>
+                  <Text className="text-xs text-gray-400 mb-3">基于每天填写的 0-10 总体情绪评分</Text>
+                  <MoodLineChart
                     data={monthStats.daily_data.map(day => ({
                       label: `${new Date(day.date + 'T00:00:00').getMonth() + 1}/${new Date(day.date + 'T00:00:00').getDate()}`,
-                      pleasure: day.avg_pleasure,
-                      importance: day.avg_importance,
+                      mood: day.daily_mood_score,
                     }))}
                     showEvery={5}
                   />

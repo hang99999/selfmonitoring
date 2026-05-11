@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import MoodRecord, PlannedActivity, LifeDomain
+from app.models import MoodRecord, PlannedActivity, LifeDomain, DailyMood
 from app.schemas import (
     TodayStatsRecord,
     TodayStatsResponse,
@@ -25,8 +25,9 @@ def _start_of_current_week(now: datetime) -> datetime:
     return start.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def _compute_daily_data(records, start_date, num_days: int) -> list[dict]:
+def _compute_daily_data(records, start_date, num_days: int, daily_moods=None) -> list[dict]:
     """Group records by date and compute per-day stats."""
+    daily_moods = daily_moods or {}
     daily = {}
     for i in range(num_days):
         d = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -63,8 +64,22 @@ def _compute_daily_data(records, start_date, num_days: int) -> list[dict]:
             avg_importance=round(avg_importance, 1) if avg_importance is not None else None,
             count=info["count"],
             dominant_emotion=dominant,
+            daily_mood_score=daily_moods.get(d),
         ))
     return result
+
+
+def _get_daily_mood_map(db: Session, user_id: str, start_date: str, end_date: str) -> dict[str, float]:
+    moods = (
+        db.query(DailyMood)
+        .filter(
+            DailyMood.user_id == user_id,
+            DailyMood.date >= start_date,
+            DailyMood.date <= end_date,
+        )
+        .all()
+    )
+    return {m.date: m.mood_score for m in moods}
 
 
 def _compute_emotion_distribution(records) -> dict[str, int]:
@@ -133,6 +148,11 @@ async def today_stats(
         )
         for r in records
     ]
+    today_key = day_start.strftime("%Y-%m-%d")
+    daily_mood = db.query(DailyMood).filter(
+        DailyMood.user_id == user_id,
+        DailyMood.date == today_key,
+    ).first()
 
     return TodayStatsResponse(
         records=stats_records,
@@ -140,6 +160,7 @@ async def today_stats(
         avg_intensity=_compute_avg_intensity(records),
         avg_pleasure=_compute_avg_pleasure(records),
         avg_importance=_compute_avg_importance(records),
+        daily_mood_score=daily_mood.mood_score if daily_mood else None,
     )
 
 
@@ -163,7 +184,10 @@ async def week_stats(
         .all()
     )
 
-    daily_data = _compute_daily_data(records, start_date.date(), num_days)
+    start_key = start_date.strftime("%Y-%m-%d")
+    end_key = now.strftime("%Y-%m-%d")
+    daily_moods = _get_daily_mood_map(db, user_id, start_key, end_key)
+    daily_data = _compute_daily_data(records, start_date.date(), num_days, daily_moods)
 
     return WeekStatsResponse(
         daily_data=daily_data,
@@ -194,7 +218,10 @@ async def month_stats(
         .all()
     )
 
-    daily_data = _compute_daily_data(records, start_date.date(), 30)
+    start_key = start_date.strftime("%Y-%m-%d")
+    end_key = now.strftime("%Y-%m-%d")
+    daily_moods = _get_daily_mood_map(db, user_id, start_key, end_key)
+    daily_data = _compute_daily_data(records, start_date.date(), 30, daily_moods)
 
     return MonthStatsResponse(
         daily_data=daily_data,
