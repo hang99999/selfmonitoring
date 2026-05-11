@@ -642,6 +642,7 @@ async def chat(
             ),
             "is_crisis": True,
             "detected_activity": None,
+            "phase_step": None,
         }
 
     # Load existing history from DB
@@ -691,9 +692,12 @@ async def chat(
 
     system = chatbot_system_prompt(state, companion_name, db=db, session_intent=effective_intent)
 
+    response_phase_step = None
+
     # Inject step tracking for phase sessions
     if effective_intent and effective_intent.startswith("phase:"):
         current_step = phase_session_obj.phase_step if phase_session_obj else 0
+        response_phase_step = current_step
         system += (
             f"\n\n---\n"
             f"[步骤追踪] 当前必须执行：Part {current_step}。"
@@ -746,6 +750,7 @@ async def chat(
         "reply": reply,
         "is_crisis": False,
         "detected_activity": detected,
+        "phase_step": response_phase_step,
     }
 
 

@@ -443,19 +443,53 @@ function S2ActivityCard({
 }
 
 function S2InlineFlow({
-  progress, userId, onSubmitMessage, onProgressRefresh,
-}: { progress: TreatmentProgressData | null; userId: string; onSubmitMessage: S2ActionMessage; onProgressRefresh: () => void }) {
+  progress, userId, phaseStep, onSubmitMessage, onProgressRefresh,
+}: {
+  progress: TreatmentProgressData | null;
+  userId: string;
+  phaseStep: number;
+  onSubmitMessage: S2ActionMessage;
+  onProgressRefresh: () => void;
+}) {
   const [selectedDomain, setSelectedDomain] = useState<LifeDomain | null>(null);
   const [savedValue, setSavedValue] = useState<Value | null>(null);
   const [savedActivity, setSavedActivity] = useState<Activity | null>(null);
+  const showScatter = phaseStep <= 0;
+  const showSetupCards = phaseStep >= 1;
 
   return (
     <View className="mt-1 mb-2">
-      <S2ScatterCard progress={progress} userId={userId} />
-      <S2DomainCard userId={userId} selected={selectedDomain} onSelect={(d) => { setSelectedDomain(d); setSavedValue(null); setSavedActivity(null); }} onSubmitMessage={onSubmitMessage} />
-      <S2ValueCard userId={userId} domain={selectedDomain} savedValue={savedValue} onSaved={setSavedValue} onSubmitMessage={onSubmitMessage} onProgressRefresh={onProgressRefresh} />
-      <S2ActivityCard userId={userId} domain={selectedDomain} value={savedValue} savedActivity={savedActivity} onSaved={setSavedActivity} onSubmitMessage={onSubmitMessage} onProgressRefresh={onProgressRefresh} />
-      {savedActivity && (
+      {showScatter && <S2ScatterCard progress={progress} userId={userId} />}
+      {showSetupCards && (
+        <S2DomainCard
+          userId={userId}
+          selected={selectedDomain}
+          onSelect={(d) => { setSelectedDomain(d); setSavedValue(null); setSavedActivity(null); }}
+          onSubmitMessage={onSubmitMessage}
+        />
+      )}
+      {showSetupCards && selectedDomain && (
+        <S2ValueCard
+          userId={userId}
+          domain={selectedDomain}
+          savedValue={savedValue}
+          onSaved={setSavedValue}
+          onSubmitMessage={onSubmitMessage}
+          onProgressRefresh={onProgressRefresh}
+        />
+      )}
+      {showSetupCards && savedValue && (
+        <S2ActivityCard
+          userId={userId}
+          domain={selectedDomain}
+          value={savedValue}
+          savedActivity={savedActivity}
+          onSaved={setSavedActivity}
+          onSubmitMessage={onSubmitMessage}
+          onProgressRefresh={onProgressRefresh}
+        />
+      )}
+      {showSetupCards && savedActivity && (
         <View className="bg-green-50 rounded-2xl border border-green-100 px-4 py-3 mb-3">
           <Text className="text-xs font-semibold text-green-600 mb-1">下一步</Text>
           <Text className="text-xs text-gray-600 leading-relaxed">活动已经进活动库了。接下来可以回到主页点“计划活动”，把它安排到具体日期和时间里。</Text>
@@ -932,6 +966,7 @@ export default function ChatbotScreen() {
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [currentIntent, setCurrentIntent] = useState<string | null>(null);
+  const [currentPhaseStep, setCurrentPhaseStep] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -960,6 +995,7 @@ export default function ChatbotScreen() {
       if (res.is_crisis) setShowCrisis(true);
       setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
       if (res.detected_activity) setDetectedActivity(res.detected_activity);
+      if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
     } finally {
@@ -995,6 +1031,7 @@ export default function ChatbotScreen() {
         }
         if (cancelled) return;
         setCurrentSessionId(session.id);
+        setCurrentPhaseStep(0);
 
         // Load existing messages
         const dbMsgs = await api.getSessionMessages(session.id, userId);
@@ -1013,6 +1050,7 @@ export default function ChatbotScreen() {
             if (res.is_crisis) setShowCrisis(true);
             setMessages([{ role: 'assistant', content: res.reply }]);
             if (res.detected_activity) setDetectedActivity(res.detected_activity);
+            if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
           } catch {
             setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
           } finally {
@@ -1037,6 +1075,7 @@ export default function ChatbotScreen() {
     let session = await api.getCurrentSession(userId);
     if (!session) session = await api.createChatSession(userId);
     setCurrentSessionId(session.id);
+    setCurrentPhaseStep(0);
     setMessages([]);
     setInitializing(false);
 
@@ -1047,6 +1086,7 @@ export default function ChatbotScreen() {
         if (res.is_crisis) setShowCrisis(true);
         setMessages([{ role: 'assistant', content: res.reply }]);
         if (res.detected_activity) setDetectedActivity(res.detected_activity);
+        if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
       } catch {
         setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
       } finally {
@@ -1061,6 +1101,7 @@ export default function ChatbotScreen() {
       const session = await api.createChatSession(userId);
       setCurrentSessionId(session.id);
       setCurrentIntent(intent);
+      setCurrentPhaseStep(0);
       setMessages([]);
       setDetectedActivity(null);
       const progress = await api.getTreatmentProgress(userId).catch(() => null);
@@ -1071,6 +1112,7 @@ export default function ChatbotScreen() {
         if (res.is_crisis) setShowCrisis(true);
         setMessages([{ role: 'assistant', content: res.reply }]);
         if (res.detected_activity) setDetectedActivity(res.detected_activity);
+        if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
       } catch {
         setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
       } finally {
@@ -1095,6 +1137,7 @@ export default function ChatbotScreen() {
       const session = await api.createChatSession(userId);
       setCurrentSessionId(session.id);
       setCurrentIntent(null);
+      setCurrentPhaseStep(0);
       setMessages([]);
       setDetectedActivity(null);
 
@@ -1184,6 +1227,7 @@ export default function ChatbotScreen() {
                   <S2InlineFlow
                     progress={treatmentProgress}
                     userId={userId}
+                    phaseStep={currentPhaseStep}
                     onSubmitMessage={_sendMessage}
                     onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
                   />

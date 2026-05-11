@@ -111,6 +111,7 @@ export interface ChatResponse {
   reply: string;
   is_crisis: boolean;
   detected_activity: { type: 'completed' | 'planned'; name: string } | null;
+  phase_step?: number | null;
 }
 
 export interface TreatmentCriterion {
