@@ -132,6 +132,7 @@ export interface TreatmentProgressData {
   criteria: TreatmentCriterion[];
   criteria_met: boolean;
   can_advance: boolean;
+  manual_advance_enabled: boolean;
   active_trigger?: string | null;
   recently_triggered?: string[];
   phase_session_done?: boolean;

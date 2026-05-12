@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from app.database import engine, SessionLocal
 from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress, PhaseConfig
@@ -32,6 +32,16 @@ def _migrate():
             except Exception:
                 pass  # SQLite doesn't support IF NOT EXISTS — ignore
         conn.commit()
+
+    inspector = inspect(engine)
+    if "phase_config" in inspector.get_table_names():
+        columns = {col["name"] for col in inspector.get_columns("phase_config")}
+        if "manual_advance_enabled" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE phase_config "
+                    "ADD COLUMN manual_advance_enabled BOOLEAN DEFAULT TRUE"
+                ))
 
 
 @asynccontextmanager

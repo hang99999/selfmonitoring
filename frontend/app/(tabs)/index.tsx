@@ -324,7 +324,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
   const [advancing, setAdvancing] = useState(false);
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const totalCriteria = data.criteria.length;
-  const canManualAdvance = data.criteria_met && data.phase !== 'review_cycle';
+  const canManualAdvance = data.manual_advance_enabled && data.criteria_met && data.phase !== 'review_cycle';
 
   const handleAdvance = async () => {
     setAdvancing(true);
@@ -400,7 +400,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
           {data.phase !== 'review_cycle' && (
             <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3 gap-2">
               <Text className="text-[11px] font-semibold text-gray-400">进入下一阶段</Text>
-              {timeText && (
+              {!data.manual_advance_enabled && timeText && (
                 <Text className="text-xs text-gray-500">{timeText}</Text>
               )}
               {canManualAdvance ? (

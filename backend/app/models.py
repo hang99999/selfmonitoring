@@ -210,6 +210,7 @@ class PhaseConfig(Base):
     first_review_completed_target = Column(Integer, default=1)
     # 执行循环
     review_cycle_days = Column(Integer, default=7)
+    manual_advance_enabled = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=localnow)
 
 

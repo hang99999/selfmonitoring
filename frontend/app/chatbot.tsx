@@ -705,35 +705,6 @@ function S3InlineFlow({
 
 // ── Treatment Progress Card ───────────────────────────────────────────────────
 
-const PHASE_ROADMAP = [
-  {
-    key: 'intro',
-    weekLabel: 'Week 1',
-    title: '启动监测',
-    desc: '理解行为激活原理，开始记录每天的活动',
-  },
-  {
-    key: 'setup',
-    weekLabel: 'Week 2',
-    title: '价值观 × 活动 × 计划',
-    desc: '从价值观出发，建立活动库，制定第一个计划',
-  },
-  {
-    key: 'first_review',
-    weekLabel: 'Week 3',
-    title: '首次回顾',
-    desc: '回顾第一周计划，排查障碍，引入社会支持',
-  },
-  {
-    key: 'review_cycle',
-    weekLabel: '持续执行',
-    title: '每周回顾循环',
-    desc: '每周：回顾 → 障碍处理 → 新计划，长期使用',
-  },
-] as const;
-
-const PHASE_ORDER = ['intro', 'setup', 'first_review', 'review_cycle'] as const;
-
 const INTENT_LABELS: Record<string, string> = {
   'phase:intro':                        'Week 1 · 启动监测',
   'phase:setup':                        'Week 2 · 价值观 × 活动 × 计划',
@@ -745,13 +716,6 @@ const INTENT_LABELS: Record<string, string> = {
   'trigger:values_review':              '价值观复习',
   'trigger:first_plan_completed_celebration': '首次计划完成',
   'trigger:plan_completed_7_celebration':     '计划完成 7 次',
-};
-
-const PHASE_SESSION_DESCRIPTIONS: Record<string, string> = {
-  intro:        '和小暖聊聊抑郁的规律、为什么要记录活动，以及怎么开始',
-  setup:        '回顾上周记录，一步步建立你的价值观、活动库和第一个计划',
-  first_review: '聊聊第一周计划完成得怎么样，处理遇到的障碍，了解社会支持',
-  review_cycle: '回顾上周计划，处理没完成的活动，安排下周新计划',
 };
 
 const TRIGGER_PREVIEWS: Record<string, string> = {
@@ -768,7 +732,6 @@ const CONVERSATION_TRIGGERS = new Set(['monitoring_troubleshoot']);
 function TreatmentProgressCard({
   data, userId, onPhaseChanged, onStartIntent,
 }: { data: TreatmentProgressData; userId: string; onPhaseChanged: () => void; onStartIntent: (intent: string) => void }) {
-  const [expanded, setExpanded] = useState(false);
   const [showDev, setShowDev] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [pendingTrigger, setPendingTrigger] = useState<string | null>(null);
@@ -791,7 +754,6 @@ function TreatmentProgressCard({
     } catch { /* ignore */ }
   };
 
-  const currentIdx = PHASE_ORDER.indexOf(data.phase as typeof PHASE_ORDER[number]);
   const criteriaCount = data.criteria.length;
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const isForever = data.phase === 'review_cycle';
@@ -806,12 +768,11 @@ function TreatmentProgressCard({
 
   return (
     <View className="mx-4 mt-2 mb-1 bg-white border border-orange-100 rounded-2xl overflow-hidden">
-      {/* Collapsed header — tap to expand, long-press for dev panel */}
+      {/* Lightweight header — long-press for dev panel */}
       <TouchableOpacity
-        onPress={() => setExpanded(e => !e)}
         onLongPress={() => setShowDev(v => !v)}
         delayLongPress={800}
-        activeOpacity={0.8}
+        activeOpacity={0.9}
         className="flex-row items-center px-4 py-2.5 gap-2"
       >
         <View className="w-2 h-2 rounded-full bg-orange-400" />
@@ -820,11 +781,10 @@ function TreatmentProgressCard({
           <View className="w-2 h-2 rounded-full bg-blue-400 mr-1" />
         )}
         <Text className="text-xs text-gray-400 mr-1">{summaryText}</Text>
-        <Text className="text-gray-300 text-xs">{expanded ? '▲' : '▼'}</Text>
       </TouchableOpacity>
 
-      {/* Trigger preview — shown when collapsed */}
-      {!expanded && data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
+      {/* Trigger preview */}
+      {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
         <View className="px-4 pb-2.5 flex-row items-center gap-2">
           <Text className="text-xs text-blue-500 flex-1">
             小暖：{TRIGGER_PREVIEWS[data.active_trigger]}
@@ -839,7 +799,7 @@ function TreatmentProgressCard({
           )}
         </View>
       )}
-      {!expanded && !data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
+      {!data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
         <View className="px-4 pb-2.5">
           <Text className="text-xs text-gray-400">✓ 今日话题已完成</Text>
         </View>
@@ -905,149 +865,6 @@ function TreatmentProgressCard({
           </View>
           {pendingTrigger && (
             <Text className="text-[10px] text-blue-400">已设置：{pendingTrigger}</Text>
-          )}
-        </View>
-      )}
-
-      {/* Expanded: full roadmap */}
-      {expanded && (
-        <View className="border-t border-orange-50 pt-3 pb-3">
-          {PHASE_ROADMAP.map((phase, idx) => {
-            const isPast    = idx < currentIdx;
-            const isCurrent = idx === currentIdx;
-            const isFuture  = idx > currentIdx;
-
-            return (
-              <View key={phase.key} className="flex-row px-4 mb-3">
-                {/* Timeline column */}
-                <View className="items-center mr-3" style={{ width: 20 }}>
-                  {/* Node */}
-                  <View className={`w-5 h-5 rounded-full items-center justify-center
-                    ${isPast    ? 'bg-green-400' : ''}
-                    ${isCurrent ? 'bg-orange-400' : ''}
-                    ${isFuture  ? 'bg-gray-200'  : ''}
-                  `}>
-                    {isPast    && <Text className="text-white text-[9px] font-bold">✓</Text>}
-                    {isCurrent && <Text className="text-white text-[9px] font-bold">●</Text>}
-                    {isFuture  && <Text className="text-gray-400 text-[9px]">○</Text>}
-                  </View>
-                  {/* Connector line (not on last item) */}
-                  {idx < PHASE_ROADMAP.length - 1 && (
-                    <View className={`w-0.5 flex-1 mt-1 ${isPast ? 'bg-green-200' : 'bg-gray-100'}`}
-                      style={{ minHeight: 16 }} />
-                  )}
-                </View>
-
-                {/* Content column */}
-                <View className="flex-1 pb-1">
-                  <View className="flex-row items-center gap-1.5 mb-0.5">
-                    <Text className={`text-[10px] font-semibold
-                      ${isPast ? 'text-green-500' : isCurrent ? 'text-orange-500' : 'text-gray-300'}
-                    `}>
-                      {phase.weekLabel}
-                    </Text>
-                    <Text className={`text-xs font-medium
-                      ${isPast ? 'text-gray-400' : isCurrent ? 'text-gray-800' : 'text-gray-300'}
-                    `}>
-                      {phase.title}
-                    </Text>
-                    {isPast && <Text className="text-[10px] text-green-400 ml-1">已完成</Text>}
-                    {isFuture && <Text className="text-[10px] text-gray-300 ml-1">🔒</Text>}
-                  </View>
-
-                  <Text className={`text-[11px] leading-relaxed
-                    ${isCurrent ? 'text-gray-500' : 'text-gray-300'}
-                  `}>
-                    {phase.desc}
-                  </Text>
-
-                  {/* Current phase: two parallel modules */}
-                  {isCurrent && (
-                    <View className="mt-3 gap-2">
-                      {/* 本阶段会话 */}
-                      <View className="bg-orange-50 rounded-xl border border-orange-100 px-3 py-2.5">
-                        <Text className="text-[10px] text-orange-400 font-medium mb-1">本阶段会话</Text>
-                        <Text className="text-[11px] text-gray-500 leading-relaxed mb-2">
-                          {PHASE_SESSION_DESCRIPTIONS[data.phase] ?? '和小暖聊聊本阶段的内容'}
-                        </Text>
-                        {data.phase_session_done ? (
-                          <Text className="text-[11px] text-green-500 font-medium">✓ 已完成</Text>
-                        ) : (
-                          <TouchableOpacity
-                            onPress={() => onStartIntent(`phase:${data.phase}`)}
-                            className="self-start px-3 py-1 bg-orange-500 rounded-lg"
-                          >
-                            <Text className="text-xs text-white font-medium">开始本阶段对话</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-
-                      {/* 本阶段任务 */}
-                      {data.criteria.length > 0 && (
-                        <View className="bg-gray-50 rounded-xl border border-gray-100 px-3 py-2.5">
-                          <Text className="text-[10px] text-gray-400 font-medium mb-2">本阶段任务</Text>
-                          <View className="gap-1.5">
-                            {data.criteria.map(c => (
-                              <View key={c.key} className="flex-row items-center gap-1.5">
-                                <View className={`w-3.5 h-3.5 rounded-full items-center justify-center ${c.done ? 'bg-green-400' : 'bg-gray-200'}`}>
-                                  {c.done && <Text className="text-white text-[8px] font-bold">✓</Text>}
-                                </View>
-                                <Text className={`text-[11px] flex-1 ${c.done ? 'text-gray-300 line-through' : 'text-gray-600'}`}>
-                                  {c.label}
-                                </Text>
-                                {c.target !== undefined && c.target > 1 && (
-                                  <Text className="text-[11px] text-gray-400">{c.current}/{c.target}</Text>
-                                )}
-                              </View>
-                            ))}
-                          </View>
-                          <Text className={`text-[11px] mt-2 ${data.days_until_eligible > 0 ? 'text-orange-400' : data.criteria_met ? 'text-green-500' : 'text-gray-400'}`}>
-                            {data.days_until_eligible > 0
-                              ? `本阶段第 ${data.phase_days} 天，还需 ${data.days_until_eligible} 天才能推进`
-                              : data.criteria_met
-                                ? '所有条件已达成，即将进入下一阶段'
-                                : '时间条件已满足，完成以上条件后自动推进'}
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* review_cycle: no hard criteria */}
-                      {data.criteria.length === 0 && (
-                        <View className="bg-gray-50 rounded-xl border border-gray-100 px-3 py-2">
-                          <Text className="text-[11px] text-gray-400">
-                            {`第 ${data.review_cycle_count} 周 · 持续执行中`}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-
-          {/* Active trigger card */}
-          {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
-            <View className="mx-4 mt-1 mb-1 px-3 py-2.5 bg-blue-50 rounded-xl border border-blue-100">
-              <Text className="text-[10px] text-blue-400 font-medium mb-1">
-                {CONVERSATION_TRIGGERS.has(data.active_trigger) ? '小暖想和你聊聊' : '小暖提醒'}
-              </Text>
-              <Text className="text-xs text-blue-600 mb-2">{TRIGGER_PREVIEWS[data.active_trigger]}</Text>
-              {CONVERSATION_TRIGGERS.has(data.active_trigger) && (
-                <TouchableOpacity
-                  onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
-                  className="self-start px-3 py-1 bg-blue-500 rounded-lg"
-                >
-                  <Text className="text-xs text-white font-medium">开始聊</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-          {/* Recently triggered (completed today) */}
-          {!data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
-            <View className="mx-4 mt-1 mb-1 px-3 py-2 bg-gray-50 rounded-xl border border-gray-100">
-              <Text className="text-xs text-gray-400">✓ 今日话题已完成</Text>
-            </View>
           )}
         </View>
       )}

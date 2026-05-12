@@ -1020,6 +1020,7 @@ async def get_treatment_progress(
 
     criteria_met = all(c["done"] for c in criteria) if criteria else True
     can_advance = criteria_met and days_until_eligible == 0 and phase != "review_cycle"
+    manual_advance_enabled = cfg.manual_advance_enabled is not False
 
     # Compute active trigger for display (reuse state computation)
     state = _compute_user_state(db, user_id)
@@ -1034,13 +1035,23 @@ async def get_treatment_progress(
             and not is_debug_trigger):
         _record_trigger(db, user_id, active_trigger)
 
-    # Triggers fired in the last 24 hours (show as "recently completed")
+    # Message-only triggers stay visible as a same-day reminder after first display.
     cutoff = datetime.now() - timedelta(hours=24)
     recent_logs = db.query(TriggerLog).filter(
         TriggerLog.user_id == user_id,
         TriggerLog.last_executed >= cutoff,
     ).all()
     recently_triggered = [t.trigger_type for t in recent_logs]
+    if active_trigger is None:
+        recent_message_triggers = [
+            t.trigger_type
+            for t in recent_logs
+            if t.trigger_type in MESSAGE_ONLY_TRIGGERS
+        ]
+        recent_message_triggers.sort(
+            key=lambda t: TRIGGER_PRIORITY.index(t) if t in TRIGGER_PRIORITY else 99
+        )
+        active_trigger = recent_message_triggers[0] if recent_message_triggers else None
 
     # Phase session done = started at least once since phase unlocked
     phase_session_log = db.query(TriggerLog).filter(
@@ -1060,6 +1071,7 @@ async def get_treatment_progress(
         "criteria": criteria,
         "criteria_met": criteria_met,
         "can_advance": can_advance,
+        "manual_advance_enabled": manual_advance_enabled,
         "active_trigger": active_trigger,
         "recently_triggered": recently_triggered,
         "phase_session_done": phase_session_done,
@@ -1127,6 +1139,9 @@ async def advance_phase(req: AdvancePhaseRequest, db: Session = Depends(get_db))
     user_state = _compute_user_state(db, req.user_id)
     phase = progress.phase
     now = datetime.now()
+
+    if cfg.manual_advance_enabled is False:
+        return {"ok": False, "reason": "manual_advance_disabled"}
 
     if phase == "intro":
         total_records = db.query(MoodRecord).filter(MoodRecord.user_id == req.user_id).count()
