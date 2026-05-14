@@ -94,58 +94,104 @@ def _get_or_create_config(db: Session) -> PhaseConfig:
     return cfg
 
 
-def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progress: TreatmentProgress):
-    """Check unlock criteria and auto-advance to the next phase if met. Mutates progress in DB."""
-    cfg = _get_or_create_config(db)
-    now = datetime.now()
-    phase = progress.phase
-    phase_age_days = (now - progress.phase_unlocked_at).days
-    phase_session_done = _phase_session_completed_since(db, user_id, phase, progress.phase_unlocked_at)
-
-    if phase == "intro":
-        time_ok = (not cfg.intro_time_limit) or (phase_age_days >= cfg.intro_days)
-        total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
-        if time_ok and phase_session_done and total_records >= cfg.intro_records_target:
-            progress.phase = "setup"
-            progress.phase_unlocked_at = now
-            progress.updated_at = now
-            db.commit()
-
-    elif phase == "setup":
-        time_ok = (not cfg.setup_time_limit) or (phase_age_days >= cfg.setup_days)
-        values_count = db.query(Value).filter(Value.user_id == user_id).count()
-        activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
-        planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
-        if (time_ok and phase_session_done
-                and values_count >= cfg.setup_values_target
-                and activity_count >= cfg.setup_activities_target
-                and planned_ever >= cfg.setup_plans_target):
-            progress.phase = "first_review"
-            progress.phase_unlocked_at = now
-            progress.updated_at = now
-            db.commit()
-
-    elif phase == "first_review":
-        time_ok = (not cfg.first_review_time_limit) or (phase_age_days >= cfg.first_review_days)
-        any_completed = db.query(PlannedActivity).filter(
-            PlannedActivity.user_id == user_id,
-            PlannedActivity.completed == True,
-        ).count()
-        if time_ok and phase_session_done and any_completed >= cfg.first_review_completed_target:
-            progress.phase = "review_cycle"
-            progress.review_cycle_count = 1
-            progress.phase_unlocked_at = now
-            progress.updated_at = now
-            db.commit()
-
-    elif phase == "review_cycle":
+def _sync_review_cycle_count(db: Session, cfg: PhaseConfig, progress: TreatmentProgress):
+    if progress.phase == "review_cycle":
         cycle_days = max(1, cfg.review_cycle_days)
+        now = datetime.now()
         days_in_phase = (now - progress.phase_unlocked_at).days
         expected_count = max(1, days_in_phase // cycle_days + 1)
         if expected_count > progress.review_cycle_count:
             progress.review_cycle_count = expected_count
             progress.updated_at = now
             db.commit()
+
+
+def _phase_time_status(cfg: PhaseConfig, phase: str, phase_days: int) -> tuple[int | None, int, bool]:
+    if phase == "intro":
+        days_required = cfg.intro_days if cfg.intro_time_limit else None
+    elif phase == "setup":
+        days_required = cfg.setup_days if cfg.setup_time_limit else None
+    elif phase == "first_review":
+        days_required = cfg.first_review_days if cfg.first_review_time_limit else None
+    else:
+        days_required = None
+
+    days_until_eligible = max(0, days_required - phase_days) if days_required is not None else 0
+    return days_required, days_until_eligible, days_until_eligible == 0
+
+
+def _phase_tasks_required(cfg: PhaseConfig, phase: str) -> bool:
+    if phase == "intro":
+        return cfg.intro_require_tasks is not False
+    if phase == "setup":
+        return cfg.setup_require_tasks is not False
+    if phase == "first_review":
+        return cfg.first_review_require_tasks is not False
+    return False
+
+
+def _phase_task_criteria(db: Session, user_id: str, cfg: PhaseConfig, phase: str) -> list[dict]:
+    if not _phase_tasks_required(cfg, phase):
+        return []
+
+    if phase == "intro":
+        total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
+        t = cfg.intro_records_target
+        return [{"key": "records", "label": f"提交至少{t}条活动记录",
+                 "done": total_records >= t, "current": total_records, "target": t}]
+
+    if phase == "setup":
+        values_count = db.query(Value).filter(Value.user_id == user_id).count()
+        activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
+        planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
+        vt = cfg.setup_values_target
+        at = cfg.setup_activities_target
+        pt = cfg.setup_plans_target
+        return [
+            {"key": "values", "label": f"填写至少{vt}条价值观",
+             "done": values_count >= vt, "current": values_count, "target": vt},
+            {"key": "activities", "label": f"在活动库中添加至少{at}个活动",
+             "done": activity_count >= at, "current": activity_count, "target": at},
+            {"key": "planned", "label": f"安排至少{pt}个计划活动",
+             "done": planned_ever >= pt, "current": min(planned_ever, pt), "target": pt},
+        ]
+
+    if phase == "first_review":
+        any_completed = db.query(PlannedActivity).filter(
+            PlannedActivity.user_id == user_id,
+            PlannedActivity.completed == True,
+        ).count()
+        ct = cfg.first_review_completed_target
+        return [
+            {"key": "completed", "label": f"完成至少{ct}个计划活动",
+             "done": any_completed >= ct, "current": min(any_completed, ct), "target": ct},
+        ]
+
+    return []
+
+
+def _phase_can_advance(db: Session, user_id: str, cfg: PhaseConfig, progress: TreatmentProgress) -> dict:
+    phase = progress.phase
+    phase_days = (datetime.now() - progress.phase_unlocked_at).days
+    days_required, days_until_eligible, time_met = _phase_time_status(cfg, phase, phase_days)
+    criteria = _phase_task_criteria(db, user_id, cfg, phase)
+    criteria_met = all(c["done"] for c in criteria) if criteria else True
+    phase_session_done = _phase_session_completed_since(db, user_id, phase, progress.phase_unlocked_at)
+    return {
+        "days_required": days_required,
+        "days_until_eligible": days_until_eligible,
+        "time_met": time_met,
+        "tasks_required": _phase_tasks_required(cfg, phase),
+        "criteria": criteria,
+        "criteria_met": criteria_met,
+        "phase_session_done": phase_session_done,
+        "can_advance": (
+            phase != "review_cycle"
+            and phase_session_done
+            and criteria_met
+            and time_met
+        ),
+    }
 
 
 # ── User state computation ────────────────────────────────────────────────────
@@ -867,9 +913,10 @@ async def chat(
     state = _compute_user_state(db, req.user_id)
     companion_name = state["companion_name"]
 
-    # Treatment module: get progress, check advancement, inject into state
+    # Treatment module: manual advancement only. Chat no longer changes phases.
     progress = _get_or_create_progress(db, req.user_id)
-    _check_and_advance_phase(db, req.user_id, state, progress)
+    cfg = _get_or_create_config(db)
+    _sync_review_cycle_count(db, cfg, progress)
     state["treatment_phase"] = progress.phase
     state["review_cycle_count"] = progress.review_cycle_count
     state["treatment_phase_days"] = (datetime.now() - progress.phase_unlocked_at).days
@@ -969,6 +1016,7 @@ async def get_treatment_progress(
     """Return the user's current treatment phase with detailed criteria status."""
     progress = _get_or_create_progress(db, user_id)
     cfg = _get_or_create_config(db)
+    _sync_review_cycle_count(db, cfg, progress)
     now = datetime.now()
     phase_days = (now - progress.phase_unlocked_at).days
 
@@ -1011,70 +1059,19 @@ async def get_treatment_progress(
         "review_cycle": f"执行循环 · 第 {cycle} 轮",
     }
 
-    # Compute time eligibility using config
-    if phase == "intro":
-        days_required = cfg.intro_days if cfg.intro_time_limit else None
-    elif phase == "setup":
-        days_required = cfg.setup_days if cfg.setup_time_limit else None
-    elif phase == "first_review":
-        days_required = cfg.first_review_days if cfg.first_review_time_limit else None
-    else:
-        days_required = None
+    eligibility = _phase_can_advance(db, user_id, cfg, progress)
+    days_required = eligibility["days_required"]
+    days_until_eligible = eligibility["days_until_eligible"]
+    criteria = eligibility["criteria"]
+    criteria_met = eligibility["criteria_met"]
+    phase_session_done = eligibility["phase_session_done"]
+    can_advance = eligibility["can_advance"]
+    tasks_required = eligibility["tasks_required"]
 
-    days_until_eligible = max(0, days_required - phase_days) if days_required is not None else 0
-
-    # Build criteria list for each phase
-    criteria = []
-    if phase == "intro":
-        total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
-        t = cfg.intro_records_target
-        criteria = [{"key": "records", "label": f"提交至少{t}条活动记录",
-                     "done": total_records >= t, "current": total_records, "target": t}]
-
-    elif phase == "setup":
-        values_count = db.query(Value).filter(Value.user_id == user_id).count()
-        activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
-        planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
-        vt = cfg.setup_values_target
-        at = cfg.setup_activities_target
-        pt = cfg.setup_plans_target
-        criteria = [
-            {"key": "values",     "label": f"填写至少{vt}条价值观",       "done": values_count >= vt,    "current": values_count,           "target": vt},
-            {"key": "activities", "label": f"在活动库中添加至少{at}个活动", "done": activity_count >= at,  "current": activity_count,          "target": at},
-            {"key": "planned",    "label": f"安排至少{pt}个计划活动",      "done": planned_ever >= pt,    "current": min(planned_ever, pt),   "target": pt},
-        ]
-
-    elif phase == "first_review":
-        any_completed = db.query(PlannedActivity).filter(
-            PlannedActivity.user_id == user_id,
-            PlannedActivity.completed == True,
-        ).count()
-        ct = cfg.first_review_completed_target
-        criteria = [
-            {"key": "completed", "label": f"完成至少{ct}个计划活动", "done": any_completed >= ct,
-             "current": min(any_completed, ct), "target": ct},
-        ]
-
-    elif phase == "review_cycle":
+    if phase == "review_cycle":
         cycle_days = max(1, cfg.review_cycle_days)
         days_into_cycle = phase_days % cycle_days
         days_until_eligible = max(0, cycle_days - days_into_cycle)
-        criteria = []
-
-    criteria_met = all(c["done"] for c in criteria) if criteria else True
-    # Phase session done = the final tracked Part has been completed.
-    phase_session_done = _phase_session_completed_since(
-        db,
-        user_id,
-        phase,
-        progress.phase_unlocked_at,
-    )
-    can_advance = (
-        criteria_met
-        and phase_session_done
-        and days_until_eligible == 0
-        and phase != "review_cycle"
-    )
     manual_advance_enabled = cfg.manual_advance_enabled is not False
 
     # Compute active trigger for display (reuse state computation)
@@ -1117,6 +1114,7 @@ async def get_treatment_progress(
         "days_until_eligible": days_until_eligible,
         "criteria": criteria,
         "criteria_met": criteria_met,
+        "tasks_required": tasks_required,
         "can_advance": can_advance,
         "manual_advance_enabled": manual_advance_enabled,
         "active_trigger": active_trigger,
@@ -1190,56 +1188,46 @@ class AdvancePhaseRequest(BaseModel):
 
 @router.post("/treatment/advance")
 async def advance_phase(req: AdvancePhaseRequest, db: Session = Depends(get_db)):
-    """手动进入下一阶段：只检查任务标准，忽略时间限制。"""
+    """Manually enter the next phase after session, task, and time requirements pass."""
     progress = _get_or_create_progress(db, req.user_id)
     cfg = _get_or_create_config(db)
-    user_state = _compute_user_state(db, req.user_id)
     phase = progress.phase
     now = datetime.now()
 
     if cfg.manual_advance_enabled is False:
         return {"ok": False, "reason": "manual_advance_disabled"}
 
-    if not _phase_session_completed_since(db, req.user_id, phase, progress.phase_unlocked_at):
+    eligibility = _phase_can_advance(db, req.user_id, cfg, progress)
+    if not eligibility["phase_session_done"]:
         return {"ok": False, "reason": "phase_session_not_completed"}
+    if not eligibility["criteria_met"]:
+        return {"ok": False, "reason": "criteria_not_met"}
+    if not eligibility["time_met"]:
+        return {"ok": False, "reason": "time_not_met"}
+    if not eligibility["can_advance"]:
+        return {"ok": False, "reason": "no_next_phase"}
 
     if phase == "intro":
-        total_records = db.query(MoodRecord).filter(MoodRecord.user_id == req.user_id).count()
-        if total_records >= cfg.intro_records_target:
-            progress.phase = "setup"
-            progress.phase_unlocked_at = now
-            progress.updated_at = now
-            db.commit()
-            return {"ok": True, "new_phase": "setup"}
-        return {"ok": False, "reason": "criteria_not_met"}
+        progress.phase = "setup"
+        progress.phase_unlocked_at = now
+        progress.updated_at = now
+        db.commit()
+        return {"ok": True, "new_phase": "setup"}
 
     elif phase == "setup":
-        values_count = db.query(Value).filter(Value.user_id == req.user_id).count()
-        activity_count = db.query(Activity).filter(Activity.user_id == req.user_id).count()
-        planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == req.user_id).count()
-        if (values_count >= cfg.setup_values_target
-                and activity_count >= cfg.setup_activities_target
-                and planned_ever >= cfg.setup_plans_target):
-            progress.phase = "first_review"
-            progress.phase_unlocked_at = now
-            progress.updated_at = now
-            db.commit()
-            return {"ok": True, "new_phase": "first_review"}
-        return {"ok": False, "reason": "criteria_not_met"}
+        progress.phase = "first_review"
+        progress.phase_unlocked_at = now
+        progress.updated_at = now
+        db.commit()
+        return {"ok": True, "new_phase": "first_review"}
 
     elif phase == "first_review":
-        any_completed = db.query(PlannedActivity).filter(
-            PlannedActivity.user_id == req.user_id,
-            PlannedActivity.completed == True,
-        ).count()
-        if any_completed >= cfg.first_review_completed_target:
-            progress.phase = "review_cycle"
-            progress.review_cycle_count = 1
-            progress.phase_unlocked_at = now
-            progress.updated_at = now
-            db.commit()
-            return {"ok": True, "new_phase": "review_cycle"}
-        return {"ok": False, "reason": "criteria_not_met"}
+        progress.phase = "review_cycle"
+        progress.review_cycle_count = 1
+        progress.phase_unlocked_at = now
+        progress.updated_at = now
+        db.commit()
+        return {"ok": True, "new_phase": "review_cycle"}
 
     return {"ok": False, "reason": "no_next_phase"}
 

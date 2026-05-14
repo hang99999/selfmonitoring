@@ -36,12 +36,23 @@ def _migrate():
     inspector = inspect(engine)
     if "phase_config" in inspector.get_table_names():
         columns = {col["name"] for col in inspector.get_columns("phase_config")}
-        if "manual_advance_enabled" not in columns:
+        missing_bool_columns = [
+            column
+            for column in (
+                "intro_require_tasks",
+                "setup_require_tasks",
+                "first_review_require_tasks",
+                "manual_advance_enabled",
+            )
+            if column not in columns
+        ]
+        if missing_bool_columns:
             with engine.begin() as conn:
-                conn.execute(text(
-                    "ALTER TABLE phase_config "
-                    "ADD COLUMN manual_advance_enabled BOOLEAN DEFAULT TRUE"
-                ))
+                for column in missing_bool_columns:
+                    conn.execute(text(
+                        f"ALTER TABLE phase_config "
+                        f"ADD COLUMN {column} BOOLEAN DEFAULT TRUE"
+                    ))
 
 
 @asynccontextmanager
