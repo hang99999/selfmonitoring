@@ -645,11 +645,16 @@ def _phase_session_completed_since(
     phase: str,
     since: datetime,
 ) -> bool:
-    return db.query(ChatSession).filter(
+    return db.query(ChatSession).join(
+        ChatMessageRecord,
+        ChatMessageRecord.session_id == ChatSession.id,
+    ).filter(
         ChatSession.user_id == user_id,
         ChatSession.session_intent == f"phase:{phase}",
         ChatSession.phase_step >= _phase_completion_step(phase),
         ChatSession.created_at >= since,
+        ChatMessageRecord.user_id == user_id,
+        ChatMessageRecord.role == "user",
     ).first() is not None
 
 
