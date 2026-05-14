@@ -100,11 +100,12 @@ def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progre
     now = datetime.now()
     phase = progress.phase
     phase_age_days = (now - progress.phase_unlocked_at).days
+    phase_session_done = _phase_session_completed_since(db, user_id, phase, progress.phase_unlocked_at)
 
     if phase == "intro":
         time_ok = (not cfg.intro_time_limit) or (phase_age_days >= cfg.intro_days)
         total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
-        if time_ok and total_records >= cfg.intro_records_target:
+        if time_ok and phase_session_done and total_records >= cfg.intro_records_target:
             progress.phase = "setup"
             progress.phase_unlocked_at = now
             progress.updated_at = now
@@ -115,7 +116,8 @@ def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progre
         values_count = db.query(Value).filter(Value.user_id == user_id).count()
         activity_count = db.query(Activity).filter(Activity.user_id == user_id).count()
         planned_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
-        if (time_ok and values_count >= cfg.setup_values_target
+        if (time_ok and phase_session_done
+                and values_count >= cfg.setup_values_target
                 and activity_count >= cfg.setup_activities_target
                 and planned_ever >= cfg.setup_plans_target):
             progress.phase = "first_review"
@@ -129,7 +131,7 @@ def _check_and_advance_phase(db: Session, user_id: str, user_state: dict, progre
             PlannedActivity.user_id == user_id,
             PlannedActivity.completed == True,
         ).count()
-        if time_ok and any_completed >= cfg.first_review_completed_target:
+        if time_ok and phase_session_done and any_completed >= cfg.first_review_completed_target:
             progress.phase = "review_cycle"
             progress.review_cycle_count = 1
             progress.phase_unlocked_at = now
@@ -1052,7 +1054,19 @@ async def get_treatment_progress(
         criteria = []
 
     criteria_met = all(c["done"] for c in criteria) if criteria else True
-    can_advance = criteria_met and days_until_eligible == 0 and phase != "review_cycle"
+    # Phase session done = the final tracked Part has been completed.
+    phase_session_done = _phase_session_completed_since(
+        db,
+        user_id,
+        phase,
+        progress.phase_unlocked_at,
+    )
+    can_advance = (
+        criteria_met
+        and phase_session_done
+        and days_until_eligible == 0
+        and phase != "review_cycle"
+    )
     manual_advance_enabled = cfg.manual_advance_enabled is not False
 
     # Compute active trigger for display (reuse state computation)
@@ -1085,14 +1099,6 @@ async def get_treatment_progress(
             key=lambda t: TRIGGER_PRIORITY.index(t) if t in TRIGGER_PRIORITY else 99
         )
         active_trigger = recent_message_triggers[0] if recent_message_triggers else None
-
-    # Phase session done = the final tracked Part has been completed.
-    phase_session_done = _phase_session_completed_since(
-        db,
-        user_id,
-        phase,
-        progress.phase_unlocked_at,
-    )
 
     return {
         "phase": phase,
@@ -1185,6 +1191,9 @@ async def advance_phase(req: AdvancePhaseRequest, db: Session = Depends(get_db))
 
     if cfg.manual_advance_enabled is False:
         return {"ok": False, "reason": "manual_advance_disabled"}
+
+    if not _phase_session_completed_since(db, req.user_id, phase, progress.phase_unlocked_at):
+        return {"ok": False, "reason": "phase_session_not_completed"}
 
     if phase == "intro":
         total_records = db.query(MoodRecord).filter(MoodRecord.user_id == req.user_id).count()
