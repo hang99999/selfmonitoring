@@ -7,7 +7,7 @@ def build_global_ctx(state: dict) -> str:
     """用户全局画像（跨会话持久数据：价值观、活动库、生活领域）。
     仅在需要该上下文的阶段注入（S1 intro 不注入）。
     """
-    companion_name = state.get("companion_name", "小暖")
+    companion_name = "小暖"
     days = state.get("days_since_registration", 0)
     values_summary = json.dumps(state.get("user_values_summary", {}), ensure_ascii=False)
     top_activities = state.get("user_top_activities", [])
@@ -20,7 +20,7 @@ def build_global_ctx(state: dict) -> str:
 
 ## 全局用户画像（跨会话持久，每次都注入）
 
-- 伙伴名字（用户给你起的）：{companion_name}
+- 伙伴名字：{companion_name}
 - 注册天数：{days} 天
 - 用户价值观摘要：{values_summary}
 - 用户常用活动列表：{top_activities}

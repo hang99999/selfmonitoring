@@ -204,7 +204,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     days_since_registration = (now - user.created_at).days if user and user.created_at else 0
 
     cs = db.query(CompanionSettings).filter(CompanionSettings.user_id == user_id).first()
-    companion_name = cs.companion_name if cs else "小暖"
     user_summary = cs.user_summary if cs else None
 
     first_trigger = db.query(TriggerLog).filter(
@@ -454,7 +453,6 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     planned_count_ever = db.query(PlannedActivity).filter(PlannedActivity.user_id == user_id).count()
 
     return {
-        "companion_name": companion_name,
         "user_summary": user_summary,
         "days_since_registration": days_since_registration,
         "total_records_count": total_records_count,
@@ -741,11 +739,6 @@ class ChatRequest(BaseModel):
     session_intent: str | None = None  # e.g. "phase:intro" or "trigger:life_area_balance"
 
 
-class CompanionNameRequest(BaseModel):
-    user_id: str = "default_user"
-    companion_name: str
-
-
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("/state")
@@ -911,7 +904,7 @@ async def chat(
 
     # Compute user state
     state = _compute_user_state(db, req.user_id)
-    companion_name = state["companion_name"]
+    companion_name = "小暖"
 
     # Treatment module: manual advancement only. Chat no longer changes phases.
     progress = _get_or_create_progress(db, req.user_id)
@@ -1232,14 +1225,3 @@ async def advance_phase(req: AdvancePhaseRequest, db: Session = Depends(get_db))
     return {"ok": False, "reason": "no_next_phase"}
 
 
-@router.put("/companion-name")
-async def set_companion_name(req: CompanionNameRequest, db: Session = Depends(get_db)):
-    """Save or update the companion's name."""
-    cs = db.query(CompanionSettings).filter(CompanionSettings.user_id == req.user_id).first()
-    if cs:
-        cs.companion_name = req.companion_name
-        cs.updated_at = datetime.now()
-    else:
-        db.add(CompanionSettings(user_id=req.user_id, companion_name=req.companion_name))
-    db.commit()
-    return {"ok": True, "companion_name": req.companion_name}

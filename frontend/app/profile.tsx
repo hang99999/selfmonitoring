@@ -18,20 +18,12 @@ export default function ProfileScreen() {
   const [inputInvite, setInputInvite] = useState('');
   const [unlocking, setUnlocking] = useState(false);
 
-  const [companionName, setCompanionNameInput] = useState('');
-  const [savingName, setSavingName] = useState(false);
-  const [nameSaved, setNameSaved] = useState(false);
-
   useEffect(() => {
     (async () => {
       const unlocked = await getIsUnlocked();
       setIsUnlockedState(unlocked);
       const code = await getParticipantCode();
       setParticipantCodeState(code);
-      try {
-        const state = await api.getChatbotState(userId);
-        setCompanionNameInput(state.companion_name ?? '小暖');
-      } catch { /* ignore */ }
     })();
   }, [userId]);
 
@@ -51,20 +43,6 @@ export default function ProfileScreen() {
       Alert.alert('解锁失败', msg);
     } finally {
       setUnlocking(false);
-    }
-  };
-
-  const handleSaveName = async () => {
-    if (!companionName.trim() || savingName) return;
-    setSavingName(true);
-    try {
-      await api.setCompanionName(companionName.trim(), userId);
-      setNameSaved(true);
-      setTimeout(() => setNameSaved(false), 2000);
-    } catch {
-      Alert.alert('保存失败', '请检查网络后重试');
-    } finally {
-      setSavingName(false);
     }
   };
 
@@ -141,32 +119,6 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             </>
           )}
-        </View>
-
-        {/* Companion name card */}
-        <View className="bg-white rounded-2xl p-5 mb-3 shadow-sm">
-          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">伙伴设置</Text>
-          <Text className="text-sm text-gray-500 mb-3">给你的 AI 伙伴起一个名字</Text>
-          <View className="flex-row gap-2">
-            <TextInput
-              value={companionName}
-              onChangeText={setCompanionNameInput}
-              placeholder="例如：小暖、小橙……"
-              placeholderTextColor="#9ca3af"
-              className="flex-1 px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800"
-            />
-            <TouchableOpacity
-              onPress={handleSaveName}
-              disabled={!companionName.trim() || savingName}
-              className="px-5 py-3 bg-orange-500 rounded-xl items-center justify-center"
-              style={{ opacity: !companionName.trim() ? 0.4 : 1 }}
-            >
-              {savingName
-                ? <ActivityIndicator color="white" size="small" />
-                : <Text className="text-white font-semibold text-sm">{nameSaved ? '✓' : '保存'}</Text>
-              }
-            </TouchableOpacity>
-          </View>
         </View>
 
         <View className="h-8" />

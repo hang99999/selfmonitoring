@@ -142,7 +142,6 @@ export interface TreatmentProgressData {
 }
 
 export interface UserState {
-  companion_name: string;
   days_since_registration: number;
   is_first_conversation: boolean;
   total_records_this_week: number;

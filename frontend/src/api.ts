@@ -274,12 +274,6 @@ export const api = {
       body: JSON.stringify({ user_id: userId, trigger }),
     }),
 
-  setCompanionName: (name: string, userId = 'default_user') =>
-    request<{ ok: boolean; companion_name: string }>('/api/chatbot/companion-name', {
-      method: 'PUT',
-      body: JSON.stringify({ user_id: userId, companion_name: name }),
-    }),
-
   // --- Supporters ---
   getSupporters: (userId = 'default_user') =>
     request<Supporter[]>(`/api/supporters?user_id=${userId}`),

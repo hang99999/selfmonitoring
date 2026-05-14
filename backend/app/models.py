@@ -145,7 +145,7 @@ class TriggerLog(Base):
 
 
 class CompanionSettings(Base):
-    """用户给伙伴起的名字"""
+    """伙伴相关持久设置"""
     __tablename__ = "companion_settings"
 
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)

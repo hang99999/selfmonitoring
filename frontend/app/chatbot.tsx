@@ -12,7 +12,7 @@ import RecordModal from '../components/RecordModal';
 import { api } from '../src/api';
 import { useUserId } from '../src/userStore';
 import type {
-  ChatMessage, ChatSession, UserState, TreatmentProgressData, LifeDomain,
+  ChatMessage, ChatSession, TreatmentProgressData, LifeDomain,
   MoodRecord, Value, Activity, PlannedActivity,
 } from '../src/types';
 
@@ -223,34 +223,6 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
         )}
       </View>
     </Modal>
-  );
-}
-
-// ── Name setup ────────────────────────────────────────────────────────────────
-function NameSetup({ onConfirm }: { onConfirm: (name: string) => void }) {
-  const [name, setName] = useState('');
-  return (
-    <View className="flex-1 items-center justify-center px-8">
-      <XiaoNuan size={96} />
-      <Text className="text-xl font-bold text-gray-800 mt-5 mb-2">给我起个名字吧</Text>
-      <Text className="text-sm text-gray-500 text-center mb-8 leading-relaxed">
-        我会陪你一起做行为激活练习。{'\n'}你可以叫我任何你喜欢的名字。
-      </Text>
-      <TextInput
-        value={name} onChangeText={setName} autoFocus
-        placeholder="例如：小暖、小橙、阿暖……"
-        placeholderTextColor="#9ca3af"
-        className="w-full max-w-xs px-4 py-3 border border-gray-200 rounded-2xl text-sm text-center text-gray-800 mb-4"
-        onSubmitEditing={() => name.trim() && onConfirm(name.trim())}
-      />
-      <TouchableOpacity onPress={() => name.trim() && onConfirm(name.trim())} disabled={!name.trim()}
-        className="w-full max-w-xs py-4 bg-orange-500 rounded-2xl items-center mb-3">
-        <Text className="text-white font-semibold">就叫这个</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => onConfirm('小暖')}>
-        <Text className="text-sm text-gray-400">跳过，用默认名字"小暖"</Text>
-      </TouchableOpacity>
-    </View>
   );
 }
 
@@ -982,7 +954,6 @@ export default function ChatbotScreen() {
   const userId = useUserId();
   const { intent: intentParam } = useLocalSearchParams<{ intent?: string }>();
 
-  const [userState, setUserState] = useState<UserState | null>(null);
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
   const [currentIntent, setCurrentIntent] = useState<string | null>(null);
@@ -991,7 +962,6 @@ export default function ChatbotScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(true);
-  const [needsName, setNeedsName] = useState(false);
   const [showCrisis, setShowCrisis] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [detectedActivity, setDetectedActivity] = useState<{ type: 'completed' | 'planned'; name: string } | null>(null);
@@ -1035,15 +1005,7 @@ export default function ChatbotScreen() {
           api.getTreatmentProgress(userId).catch(() => null),
         ]);
         if (cancelled) return;
-        setUserState(state);
         setTreatmentProgress(progress);
-
-        // First-ever launch: ask for companion name
-        if (state.companion_name === '小暖' && state.is_first_conversation) {
-          setNeedsName(true);
-          setInitializing(false);
-          return;
-        }
 
         // Get or create a session
         let session = await api.getCurrentSession(userId);
@@ -1086,37 +1048,6 @@ export default function ChatbotScreen() {
 
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Name confirm ────────────────────────────────────────────────────────────
-  const handleNameConfirm = async (name: string) => {
-    await api.setCompanionName(name, userId).catch(() => {});
-    const state = await api.getChatbotState(userId);
-    setUserState(state);
-    setNeedsName(false);
-
-    let session = await api.getCurrentSession(userId);
-    if (!session) session = await api.createChatSession(userId);
-    setCurrentSessionId(session.id);
-    setCurrentIntent(session.session_intent ?? null);
-    setCurrentPhaseStep(session.phase_step ?? 0);
-    setMessages([]);
-    setInitializing(false);
-
-    if (state.active_triggers.length > 0 || state.is_first_conversation) {
-      setLoading(true);
-      try {
-        const res = await api.sendChatMessage(session.id, '', userId);
-        if (res.is_crisis) setShowCrisis(true);
-        setMessages([{ role: 'assistant', content: res.reply }]);
-        if (res.detected_activity) setDetectedActivity(res.detected_activity);
-        if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
-      } catch {
-        setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
 
   // ── Start intent conversation ────────────────────────────────────────────────
   const handleStartIntent = async (intent: string) => {
@@ -1173,11 +1104,7 @@ export default function ChatbotScreen() {
       setMessages([]);
       setDetectedActivity(null);
 
-      const [state, progress] = await Promise.all([
-        api.getChatbotState(userId),
-        api.getTreatmentProgress(userId).catch(() => null),
-      ]);
-      setUserState(state);
+      const progress = await api.getTreatmentProgress(userId).catch(() => null);
       setTreatmentProgress(progress);
 
     } catch {
@@ -1185,7 +1112,7 @@ export default function ChatbotScreen() {
     }
   };
 
-  const companionName = userState?.companion_name ?? '小暖';
+  const companionName = '小暖';
   const allItems: (ChatMessage | 'typing')[] = loading ? [...messages, 'typing'] : messages;
   const phaseListHeader = (() => {
     if (currentIntent === 'phase:setup') {
@@ -1265,7 +1192,7 @@ export default function ChatbotScreen() {
       </View>
 
       {/* Treatment progress card */}
-      {!initializing && !needsName && treatmentProgress && (
+      {!initializing && treatmentProgress && (
         <TreatmentProgressCard
           data={treatmentProgress}
           userId={userId}
@@ -1281,8 +1208,6 @@ export default function ChatbotScreen() {
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator size="large" color="#f97316" />
         </View>
-      ) : needsName ? (
-        <NameSetup onConfirm={handleNameConfirm} />
       ) : (
         <KeyboardAvoidingView
           className="flex-1"
