@@ -64,6 +64,13 @@ TRIGGER_COOLDOWNS = {
     "plan_completed_7_celebration": 9999,
 }
 
+PHASE_SESSION_COMPLETION_STEPS = {
+    "intro": 4,
+    "setup": 3,
+    "first_review": 4,
+    "review_cycle": 4,
+}
+
 
 # ── Treatment progress helpers ────────────────────────────────────────────────
 
@@ -628,6 +635,24 @@ def _record_trigger(db: Session, user_id: str, trigger_type: str):
     db.commit()
 
 
+def _phase_completion_step(phase: str) -> int:
+    return PHASE_SESSION_COMPLETION_STEPS.get(phase, 1)
+
+
+def _phase_session_completed_since(
+    db: Session,
+    user_id: str,
+    phase: str,
+    since: datetime,
+) -> bool:
+    return db.query(ChatSession).filter(
+        ChatSession.user_id == user_id,
+        ChatSession.session_intent == f"phase:{phase}",
+        ChatSession.phase_step >= _phase_completion_step(phase),
+        ChatSession.created_at >= since,
+    ).first() is not None
+
+
 # ── Session title background task ─────────────────────────────────────────────
 
 async def _generate_session_title(session_id: int, context_messages: list[dict]):
@@ -878,12 +903,11 @@ async def chat(
     # Call LLM
     reply = await call_llm_chat(system, llm_messages)
 
-    # Record trigger/phase session usage (for cooldowns and phase_session_done tracking)
+    # Record trigger usage for cooldowns. Phase sessions are recorded only after
+    # the final step is completed, so opening/leaving the page does not count.
     if req.session_intent and req.session_intent.startswith("trigger:"):
         trigger_key = req.session_intent.removeprefix("trigger:")
         _record_trigger(db, req.user_id, trigger_key)
-    elif req.session_intent and req.session_intent.startswith("phase:"):
-        _record_trigger(db, req.user_id, f"phase_session:{progress.phase}")
 
     # Strip hidden [ACT:...] tag
     reply, detected = _extract_activity_tag(reply)
@@ -893,6 +917,10 @@ async def chat(
         reply = reply.replace("[STEP_DONE]", "").strip()
         if phase_session_obj:
             phase_session_obj.phase_step = (phase_session_obj.phase_step or 0) + 1
+            response_phase_step = phase_session_obj.phase_step
+            if (effective_intent and effective_intent.startswith("phase:")
+                    and phase_session_obj.phase_step >= _phase_completion_step(progress.phase)):
+                _record_trigger(db, req.user_id, f"phase_session:{progress.phase}")
             db.commit()
 
     # Save assistant reply to DB
@@ -1053,13 +1081,13 @@ async def get_treatment_progress(
         )
         active_trigger = recent_message_triggers[0] if recent_message_triggers else None
 
-    # Phase session done = started at least once since phase unlocked
-    phase_session_log = db.query(TriggerLog).filter(
-        TriggerLog.user_id == user_id,
-        TriggerLog.trigger_type == f"phase_session:{phase}",
-        TriggerLog.last_executed >= progress.phase_unlocked_at,
-    ).first()
-    phase_session_done = phase_session_log is not None
+    # Phase session done = the final tracked Part has been completed.
+    phase_session_done = _phase_session_completed_since(
+        db,
+        user_id,
+        phase,
+        progress.phase_unlocked_at,
+    )
 
     return {
         "phase": phase,
