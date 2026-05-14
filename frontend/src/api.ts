@@ -231,10 +231,13 @@ export const api = {
       { method: 'POST' },
     ),
 
-  getCurrentSession: (userId = 'default_user') =>
-    request<{ id: number; title: string | null; created_at: string } | null>(
-      `/api/chatbot/session/current?user_id=${userId}`,
-    ),
+  getCurrentSession: (userId = 'default_user', intent?: string) => {
+    const params = new URLSearchParams({ user_id: userId });
+    if (intent) params.set('intent', intent);
+    return request<{ id: number; title: string | null; created_at: string; phase_step?: number; session_intent?: string | null } | null>(
+      `/api/chatbot/session/current?${params}`,
+    );
+  },
 
   listSessions: (userId = 'default_user') =>
     request<ChatSession[]>(`/api/chatbot/sessions?user_id=${userId}`),
