@@ -131,6 +131,7 @@ export interface TreatmentProgressData {
   days_until_eligible: number;
   criteria: TreatmentCriterion[];
   criteria_met: boolean;
+  tasks_required?: boolean;
   can_advance: boolean;
   manual_advance_enabled: boolean;
   active_trigger?: string | null;

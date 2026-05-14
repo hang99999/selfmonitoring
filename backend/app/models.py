@@ -195,25 +195,26 @@ class PhaseConfig(Base):
 
     config_key = Column(String, primary_key=True, default="global")
     # 阶段1 · 启动监测
-    intro_time_limit = Column(Boolean, default=True)
+    intro_time_limit = Column(Boolean, default=False)
     intro_days = Column(Integer, default=7)
     intro_require_tasks = Column(Boolean, default=True)
     intro_records_target = Column(Integer, default=3)
     # 阶段2 · 价值观 × 活动 × 计划
-    setup_time_limit = Column(Boolean, default=True)
+    setup_time_limit = Column(Boolean, default=False)
     setup_days = Column(Integer, default=7)
     setup_require_tasks = Column(Boolean, default=True)
     setup_values_target = Column(Integer, default=1)
     setup_activities_target = Column(Integer, default=3)
     setup_plans_target = Column(Integer, default=1)
     # 阶段3 · 首次回顾
-    first_review_time_limit = Column(Boolean, default=True)
+    first_review_time_limit = Column(Boolean, default=False)
     first_review_days = Column(Integer, default=7)
     first_review_require_tasks = Column(Boolean, default=True)
     first_review_completed_target = Column(Integer, default=1)
     # 执行循环
     review_cycle_days = Column(Integer, default=7)
     manual_advance_enabled = Column(Boolean, default=True)
+    time_requirements_disabled_once = Column(Boolean, default=True)
     updated_at = Column(DateTime, default=localnow)
 
 

@@ -43,6 +43,7 @@ def _migrate():
                 "setup_require_tasks",
                 "first_review_require_tasks",
                 "manual_advance_enabled",
+                "time_requirements_disabled_once",
             )
             if column not in columns
         ]
@@ -51,8 +52,22 @@ def _migrate():
                 for column in missing_bool_columns:
                     conn.execute(text(
                         f"ALTER TABLE phase_config "
-                        f"ADD COLUMN {column} BOOLEAN DEFAULT TRUE"
+                        f"ADD COLUMN {column} BOOLEAN DEFAULT "
+                        f"{'FALSE' if column == 'time_requirements_disabled_once' else 'TRUE'}"
                     ))
+        inspector = inspect(engine)
+        columns = {col["name"] for col in inspector.get_columns("phase_config")}
+        if "time_requirements_disabled_once" in columns:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "UPDATE phase_config SET "
+                    "intro_time_limit = FALSE, "
+                    "setup_time_limit = FALSE, "
+                    "first_review_time_limit = FALSE, "
+                    "time_requirements_disabled_once = TRUE "
+                    "WHERE time_requirements_disabled_once IS FALSE "
+                    "OR time_requirements_disabled_once IS NULL"
+                ))
 
 
 @asynccontextmanager

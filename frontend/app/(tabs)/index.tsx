@@ -324,18 +324,21 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
   const [advancing, setAdvancing] = useState(false);
   const doneCriteria = data.criteria.filter(c => c.done).length;
   const totalCriteria = data.criteria.length;
-  const canManualAdvance = data.manual_advance_enabled && data.criteria_met && data.phase !== 'review_cycle';
+  const canManualAdvance = data.manual_advance_enabled && data.can_advance && data.phase !== 'review_cycle';
+  const hasTaskRequirement = data.tasks_required !== false;
+  const phaseDays = data.days_required === null
+    ? data.phase_days
+    : Math.min(data.phase_days, data.days_required);
+  const requirementParts = ['完成阶段对话'];
+  if (hasTaskRequirement) requirementParts.push('阶段任务');
+  const requirementText = data.days_required === null
+    ? `${requirementParts.join('、')}后，可进入下一阶段`
+    : `${requirementParts.join('、')}，并经过 ${phaseDays}/${data.days_required} 天后，可进入下一阶段`;
 
   const handleAdvance = async () => {
     setAdvancing(true);
     try { await onAdvance(); } finally { setAdvancing(false); }
   };
-
-  const timeText = data.phase === 'review_cycle'
-    ? null
-    : data.days_required === null
-      ? '无时间限制'
-      : `已进入 ${data.phase_days} 天 / 需满 ${data.days_required} 天`;
 
   return (
     <View className="w-full bg-white rounded-2xl border border-orange-100 mb-6 overflow-hidden">
@@ -398,24 +401,20 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
 
           {/* 进入下一阶段 */}
           {data.phase !== 'review_cycle' && (
-            <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3 gap-2">
-              <Text className="text-[11px] font-semibold text-gray-400">进入下一阶段</Text>
-              {!data.manual_advance_enabled && timeText && (
-                <Text className="text-xs text-gray-500">{timeText}</Text>
-              )}
+            <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3">
               {canManualAdvance ? (
                 <TouchableOpacity
                   onPress={handleAdvance}
                   disabled={advancing}
                   activeOpacity={0.85}
-                  className="mt-1 py-2.5 bg-indigo-500 rounded-xl items-center"
+                  className="py-2.5 bg-indigo-500 rounded-xl items-center"
                 >
                   <Text className="text-white text-xs font-semibold">
                     {advancing ? '处理中...' : '立即进入下一阶段 →'}
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <Text className="text-xs text-gray-400">完成上方任务后可手动跳过时间限制</Text>
+                <Text className="text-xs text-gray-400 leading-relaxed">{requirementText}</Text>
               )}
             </View>
           )}
