@@ -733,29 +733,21 @@ async def create_session(
 @router.get("/session/current")
 async def get_current_session(
     user_id: str = Query(default="default_user"),
-    intent: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """Return the most recent session for this user, or an unfinished intent session."""
-    query = db.query(ChatSession).filter(ChatSession.user_id == user_id)
-    if intent:
-        query = query.filter(ChatSession.session_intent == intent)
-        if intent.startswith("phase:"):
-            phase = intent.removeprefix("phase:")
-            progress = _get_or_create_progress(db, user_id)
-            query = query.filter(
-                ChatSession.created_at >= progress.phase_unlocked_at,
-                ChatSession.phase_step < _phase_completion_step(phase),
-            )
-    session = query.order_by(ChatSession.created_at.desc()).first()
+    """Return the most recent session for this user, or null if none."""
+    session = (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user_id)
+        .order_by(ChatSession.created_at.desc())
+        .first()
+    )
     if not session:
         return None
     return {
         "id": session.id,
         "title": session.title,
         "created_at": session.created_at.isoformat(),
-        "phase_step": session.phase_step,
-        "session_intent": session.session_intent,
     }
 
 
