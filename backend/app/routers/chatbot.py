@@ -1156,6 +1156,16 @@ async def debug_set_treatment_phase(req: TreatmentDebugRequest, db: Session = De
         TriggerLog.user_id == req.user_id,
         TriggerLog.trigger_type == f"phase_session:{req.phase}",
     ).delete()
+    db.query(ChatSession).filter(
+        ChatSession.user_id == req.user_id,
+        ChatSession.session_intent == f"phase:{req.phase}",
+    ).update(
+        {
+            ChatSession.phase_step: 0,
+            ChatSession.session_intent: None,
+        },
+        synchronize_session=False,
+    )
     db.commit()
     return {"ok": True, "phase": progress.phase, "phase_days": req.phase_days}
 
