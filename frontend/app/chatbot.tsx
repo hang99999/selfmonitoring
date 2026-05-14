@@ -1105,7 +1105,7 @@ export default function ChatbotScreen() {
       try {
         const res = await api.sendChatMessage(session.id, '', userId);
         if (res.is_crisis) setShowCrisis(true);
-        setMessages([{ role: 'assistant', content: res.reply }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
         if (res.detected_activity) setDetectedActivity(res.detected_activity);
         if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
       } catch {
@@ -1119,14 +1119,23 @@ export default function ChatbotScreen() {
   // ── Start intent conversation ────────────────────────────────────────────────
   const handleStartIntent = async (intent: string) => {
     try {
-      const session = await api.createChatSession(userId);
+      let session = intent.startsWith('phase:')
+        ? await api.getCurrentSession(userId, intent).catch(() => null)
+        : null;
+      const isResuming = !!session;
+      if (!session) {
+        session = await api.createChatSession(userId);
+      }
       setCurrentSessionId(session.id);
       setCurrentIntent(intent);
-      setCurrentPhaseStep(0);
-      setMessages([]);
+      setCurrentPhaseStep(session.phase_step ?? 0);
       setDetectedActivity(null);
       const progress = await api.getTreatmentProgress(userId).catch(() => null);
       setTreatmentProgress(progress);
+      const dbMsgs = await api.getSessionMessages(session.id, userId).catch(() => []);
+      const msgs: ChatMessage[] = dbMsgs.map(m => ({ role: m.role, content: m.content }));
+      setMessages(msgs);
+      if (isResuming && msgs.length > 0) return;
       setLoading(true);
       try {
         const res = await api.sendChatMessage(session.id, '', userId, intent);
