@@ -11,6 +11,7 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com").rstrip(
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 
 
 def _get_model() -> str:
@@ -167,6 +168,28 @@ async def _call_anthropic_chat(system_prompt: str, messages: list[dict], model: 
         response.raise_for_status()
         data = response.json()
         return data["content"][0]["text"].strip()
+
+
+async def get_embedding(text: str) -> list[float]:
+    """Get embedding vector via OpenAI-compatible embeddings API."""
+    results = await get_embeddings_batch([text])
+    return results[0]
+
+
+async def get_embeddings_batch(texts: list[str]) -> list[list[float]]:
+    """Get embedding vectors for a batch of texts."""
+    url = f"{OPENAI_BASE_URL}/v1/embeddings"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {"model": EMBEDDING_MODEL, "input": texts}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        response = await client.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        data = response.json()["data"]
+        data.sort(key=lambda x: x["index"])
+        return [item["embedding"] for item in data]
 
 
 async def _call_modelscope_chat(system_prompt: str, messages: list[dict], model: str) -> str:

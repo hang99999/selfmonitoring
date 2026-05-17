@@ -112,6 +112,12 @@ export interface ChatResponse {
   is_crisis: boolean;
   detected_activity: { type: 'completed' | 'planned'; name: string } | null;
   phase_step?: number | null;
+  free_chat_route?: {
+    primary_mode: string;
+    secondary_modes: string[];
+    confidence: number;
+    reason: string;
+  } | null;
 }
 
 export interface TreatmentCriterion {

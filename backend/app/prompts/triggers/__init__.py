@@ -3,8 +3,12 @@
 目前只有“不记录”会进入 AI 对话；其他触发只作为前端消息提醒展示。
 """
 
-_TRIGGER_PROMPTS: dict[str, str] = {
-    "monitoring_troubleshoot": """
+
+def _monitoring_troubleshoot_prompt(state: dict) -> str:
+    no_record_days = state.get("consecutive_days_no_record", 0)
+    no_record_days_text = f"连续 {no_record_days} 天" if no_record_days > 0 else "几天"
+
+    return f"""
 
 ---
 
@@ -15,7 +19,7 @@ _TRIGGER_PROMPTS: dict[str, str] = {
 - description: 你是一位温暖、专业的心理健康伙伴，基于 BATD-R 帮助用户重新开始活动监测。你不是治疗师，不做诊断，不批评，不追责。
 
 ## Background:
-用户最近连续多天没有活动记录。本次不是阶段课，也不是复盘所有数据，而是一次简短的阻碍疏通。BATD-R 中，活动监测的意义是帮助用户看清每天在做什么，以及哪些活动可能让状态变好或变差；如果没有记录，先理解原因，再进行处理。
+用户最近 {no_record_days_text} 没有活动记录。本次不是阶段课，也不是复盘所有数据，而是一次简短的阻碍疏通。BATD-R 中，活动监测的意义是帮助用户看清每天在做什么，以及哪些活动可能让状态变好或变差；如果没有记录，先理解原因，再进行处理。
 在本 app 中，记录的方式是点击主页的“记录活动”按钮，通过文本或语音进行记录。
 
 ## Goals:
@@ -35,7 +39,7 @@ _TRIGGER_PROMPTS: dict[str, str] = {
 ## Workflow:
 
 ### Part 0：开场询问
-第一句用好奇和关心切入："我最近几天好像没有见到你记录活动，我们来一起探讨下原因，是遇到什么困难了吗？"
+第一句用好奇和关心切入："我最近 {no_record_days_text} 好像没有见到你记录活动，我们来一起探讨下原因，是遇到什么困难了吗？"
 
 ### Part 1：按阻碍疏通
 若用户认为自己已经清楚了解自己的时间分配，觉得书面记录毫无意义。可以说明记录的意义：更清晰地识别行为模式，无需费力回忆所有细节。
@@ -70,9 +74,16 @@ _TRIGGER_PROMPTS: dict[str, str] = {
 从 Part 0 开始。语气自然温和，直接用开场询问切入，也不要等待用户先开口。
 
 ## Termination:
-当已经理解用户未记录的主要原因，并给出一个适合该原因的小调整，最后鼓励用户从今天的一件主要活动开始记录时，本次触发对话完成。""",
+当已经理解用户未记录的主要原因，并给出一个适合该原因的小调整，最后鼓励用户从今天的一件主要活动开始记录时，本次触发对话完成。"""
+
+
+_TRIGGER_PROMPTS = {
+    "monitoring_troubleshoot": _monitoring_troubleshoot_prompt,
 }
 
 
-def get_trigger_prompt(trigger_key: str) -> str:
-    return _TRIGGER_PROMPTS.get(trigger_key, "")
+def trigger_module_prompt(trigger_key: str, state: dict) -> str:
+    get_prompt = _TRIGGER_PROMPTS.get(trigger_key)
+    if get_prompt is None:
+        return ""
+    return get_prompt(state)

@@ -19,7 +19,7 @@ from app.models import (
     ChatSession, ChatMessageRecord,
     TreatmentProgress, PhaseConfig,
 )
-from app.prompts import chatbot_system_prompt
+from app.prompts import chatbot_system_prompt, classify_free_chat_mode
 
 router = APIRouter(prefix="/api/chatbot", tags=["chatbot"])
 
@@ -936,7 +936,25 @@ async def chat(
             start = _phase_session_start(db, req.user_id, "phase:review_cycle", phase_session_obj.created_at, progress.phase_unlocked_at)
             _apply_phase_review_window(db, state, req.user_id, start, now)
 
-    system = chatbot_system_prompt(state, companion_name, db=db, session_intent=effective_intent)
+    free_chat_route = None
+    manual_context = ""
+    if effective_intent is None:
+        free_chat_route = await classify_free_chat_mode(req.message, history, state)
+        if free_chat_route and (
+            free_chat_route.get("primary_mode") == "D_principle_qa"
+            or "D_principle_qa" in free_chat_route.get("secondary_modes", [])
+        ):
+            from app.rag import retrieve_manual_context
+            manual_context = await retrieve_manual_context(req.message)
+
+    system = chatbot_system_prompt(
+        state,
+        companion_name,
+        db=db,
+        session_intent=effective_intent,
+        free_chat_route=free_chat_route,
+        manual_context=manual_context,
+    )
 
     # Inject step tracking for phase sessions
     if effective_intent and effective_intent.startswith("phase:"):
@@ -998,6 +1016,7 @@ async def chat(
         "is_crisis": False,
         "detected_activity": detected,
         "phase_step": response_phase_step,
+        "free_chat_route": free_chat_route,
     }
 
 

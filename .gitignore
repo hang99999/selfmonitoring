@@ -1,3 +1,8 @@
+# Knowledge base - built locally by scripts/build_kb.py, not committed
+backend/data/*.pdf
+backend/data/*_kb.json
+backend/chroma_db/
+
 # Python
 __pycache__/
 *.py[cod]

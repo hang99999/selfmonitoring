@@ -9,7 +9,7 @@ from .analysis import (
     empathic_feedback_prompt,
 )
 from .core import CHATBOT_CORE_PROMPT
-from .free_chat import CHATBOT_DIALOGUE_MODES
+from .free_chat import CHATBOT_DIALOGUE_MODES, build_free_chat_prompt, classify_free_chat_mode
 from .builder import chatbot_system_prompt
 
 __all__ = [
@@ -18,6 +18,8 @@ __all__ = [
     "EMPATHIC_FEEDBACK_SYSTEM",
     "CHATBOT_CORE_PROMPT",
     "CHATBOT_DIALOGUE_MODES",
+    "build_free_chat_prompt",
+    "classify_free_chat_mode",
     "safety_check_prompt",
     "structured_extraction_prompt",
     "empathic_feedback_prompt",
