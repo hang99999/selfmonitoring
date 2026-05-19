@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.access import require_ai_access
 from app.database import get_db
 from app.models import AudioRecord, User
 from app.schemas import AudioRecordResponse, AudioUploadResponse
@@ -169,6 +170,8 @@ async def upload_audio(
     db: Session = Depends(get_db),
 ):
     """上传音频 → 阿里云 ASR 转写 → 保存 AudioRecord → 返回 transcript。"""
+    require_ai_access(db, user_id)
+
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         user = User(id=user_id)

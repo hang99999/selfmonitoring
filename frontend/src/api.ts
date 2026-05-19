@@ -8,7 +8,8 @@ import type {
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
 // 开发时手机和电脑在同一 WiFi 下，指向电脑局域网 IP
-const BASE = 'http://47.239.197.238:8000';
+const DEFAULT_API_BASE = 'http://47.239.197.238:8000';
+const BASE = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE;
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
@@ -20,6 +21,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(`API ${res.status}: ${detail || res.statusText}`);
   }
   return res.json();
+}
+
+export function isAiAccessRequiredError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('AI_ACCESS_REQUIRED');
 }
 
 export const api = {
@@ -40,6 +45,20 @@ export const api = {
         ...(audioRecordId ? { audio_record_id: audioRecordId } : {}),
         ...quickFields,
       }),
+    }),
+
+  submitManualRecord: (data: {
+    activity: string;
+    thought?: string;
+    pleasure_score: number;
+    importance_score: number;
+    life_domain_id?: string | null;
+    planned_activity_id?: string;
+    user_id?: string;
+  }) =>
+    request<MoodRecord>('/api/record/manual', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: 'default_user', ...data }),
     }),
 
   uploadAudio: async (fileUri: string, userId = 'default_user'): Promise<AudioUploadResponse> => {
@@ -338,5 +357,11 @@ export const api = {
     ),
 
   getUnlockStatus: (userId: string) =>
-    request<{ is_unlocked: boolean; participant_code: string | null }>(`/api/auth/status?user_id=${userId}`),
+    request<{
+      is_unlocked: boolean;
+      participant_code: string | null;
+      plan_type?: string;
+      premium_until?: string | null;
+      entitlement_source?: string | null;
+    }>(`/api/auth/status?user_id=${userId}`),
 };

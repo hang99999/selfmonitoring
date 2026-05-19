@@ -10,6 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.access import require_ai_access
 from app.database import SessionLocal, get_db
 from app.llm_client import call_llm, call_llm_chat
 from app.models import (
@@ -877,6 +878,8 @@ async def chat(
             "detected_activity": None,
             "phase_step": None,
         }
+
+    require_ai_access(db, req.user_id)
 
     # Load existing history from DB
     db_messages = (

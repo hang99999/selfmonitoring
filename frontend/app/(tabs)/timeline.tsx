@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { api } from '../../src/api';
+import { api, isAiAccessRequiredError } from '../../src/api';
 import { useUserId } from '../../src/userStore';
 import type { MoodRecord, PlannedActivity, PlannedActivitySupporter } from '../../src/types';
 import RecordModal from '../../components/RecordModal';
@@ -127,8 +127,12 @@ function IncompleteModal({ item, onClose, onReload }: {
     try {
       const res = await api.breakdownActivity(item.id);
       setSteps(res.steps || []);
-    } catch {
-      setSteps(['先做3次深呼吸，放松一下', `把"${item.activity_name}"想成只做1分钟`, '先开始那1分钟，完成再决定下一步']);
+    } catch (error) {
+      if (isAiAccessRequiredError(error)) {
+        setSteps(['这个 AI 拆解功能需要先解锁或开通会员。']);
+      } else {
+        setSteps(['先做3次深呼吸，放松一下', `把"${item.activity_name}"想成只做1分钟`, '先开始那1分钟，完成再决定下一步']);
+      }
     } finally {
       setLoading(false);
       setStep('breakdown');
@@ -307,12 +311,25 @@ export default function TimelineScreen() {
 
   // handle complete planned activity
   const handleCompleteScores = async (p: PlannedActivity, pleasure: number, importance: number) => {
-    const text = `我完成了计划中的活动：${p.activity_name}`;
-    const rec = await api.submitRecord(text, userId, p.id);
-    await api.confirmRecord(rec.id, { pleasure_score: pleasure, importance_score: importance });
-    await api.completePlanned(p.id, rec.id).catch(() => {});
-    setCompleteFor(null);
-    reload();
+    try {
+      const rec = await api.submitManualRecord({
+        user_id: userId,
+        activity: p.activity_name,
+        pleasure_score: pleasure,
+        importance_score: importance,
+        planned_activity_id: p.id,
+      });
+      await api.completePlanned(p.id, rec.id).catch(() => {});
+      setCompleteFor(null);
+      reload();
+    } catch (error) {
+      Alert.alert(
+        '提示',
+        isAiAccessRequiredError(error)
+          ? '需要先解锁或开通会员，才能使用 AI 记录解析。'
+          : '提交失败，请稍后重试',
+      );
+    }
   };
 
   // handle planned card tap

@@ -9,7 +9,7 @@ import {
   setAudioModeAsync,
   useAudioRecorder,
 } from 'expo-audio';
-import { api } from '../src/api';
+import { api, isAiAccessRequiredError } from '../src/api';
 
 const IOS_WAV_PRESET = {
   ...RecordingPresets.HIGH_QUALITY,
@@ -155,7 +155,9 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
       onTranscript(result.transcript, result.audio_record_id);
       setState('idle');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误';
+      const message = isAiAccessRequiredError(error)
+        ? '需要先解锁或开通会员，才能使用语音转写。'
+        : error instanceof Error ? error.message : '未知错误';
       setErrorMsg(`上传失败：${message}`);
       setState('error');
     }

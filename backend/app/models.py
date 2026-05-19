@@ -19,6 +19,10 @@ class User(Base):
     created_at = Column(DateTime, default=localnow)
     participant_code = Column(String, nullable=True)   # e.g. "P001", set on unlock
     is_unlocked = Column(Boolean, default=False)
+    plan_type = Column(String, default="free")
+    premium_until = Column(DateTime, nullable=True)
+    entitlement_source = Column(String, nullable=True)
+    revenuecat_app_user_id = Column(String, nullable=True)
 
 
 class AccessCode(Base):
@@ -28,6 +32,14 @@ class AccessCode(Base):
     code = Column(String, primary_key=True)      # e.g. "STUDY2024"
     description = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    max_uses = Column(Integer, default=1)
+    used_count = Column(Integer, default=0)
+    used_by_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    plan_type = Column(String, default="invite")
+    batch = Column(String, nullable=True)
+    created_at = Column(DateTime, default=localnow)
 
 
 class LifeDomain(Base):

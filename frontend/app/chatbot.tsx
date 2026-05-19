@@ -9,12 +9,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
-import { api } from '../src/api';
+import { api, isAiAccessRequiredError } from '../src/api';
 import { useUserId } from '../src/userStore';
 import type {
   ChatMessage, ChatSession, TreatmentProgressData, LifeDomain,
   MoodRecord, Value, Activity, PlannedActivity,
 } from '../src/types';
+
+const AI_ACCESS_MESSAGE = '需要先解锁或开通会员，才能使用 AI 对话。你可以到「我的」里输入邀请码。';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -987,8 +989,11 @@ export default function ChatbotScreen() {
       setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
       if (res.detected_activity) setDetectedActivity(res.detected_activity);
       if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
-    } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '网络出了点问题，稍后再试试？',
+      }]);
     } finally {
       setLoading(false);
     }
@@ -1035,8 +1040,11 @@ export default function ChatbotScreen() {
             setMessages([{ role: 'assistant', content: res.reply }]);
             if (res.detected_activity) setDetectedActivity(res.detected_activity);
             if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
-          } catch {
-            setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+          } catch (error) {
+            setMessages([{
+              role: 'assistant',
+              content: isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '网络出了点问题，稍后再试试？',
+            }]);
           } finally {
             setLoading(false);
           }
@@ -1076,8 +1084,11 @@ export default function ChatbotScreen() {
         setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
         if (res.detected_activity) setDetectedActivity(res.detected_activity);
         if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
-      } catch {
-        setMessages([{ role: 'assistant', content: '网络出了点问题，稍后再试试？' }]);
+      } catch (error) {
+        setMessages([{
+          role: 'assistant',
+          content: isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '网络出了点问题，稍后再试试？',
+        }]);
       } finally {
         setLoading(false);
       }

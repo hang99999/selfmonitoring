@@ -38,11 +38,11 @@ const SCALES: Scale[] = [
     maxScore: 27,
     displayScore: s => s,
     interpret: (s) => {
-      if (s <= 4) return { level: '无或极少', severity: 'green', desc: '目前没有明显的抑郁症状，继续保持健康的生活习惯。', advice: ['维持规律的作息和运动', '保持社交联系和有意义的活动', '定期关注自己的情绪状态'] };
-      if (s <= 9) return { level: '轻微抑郁', severity: 'yellow', desc: '存在一些轻微抑郁症状，建议积极行动改善状态。', advice: ['增加令自己有愉悦感的活动（行为激活）', '规律运动，每天至少30分钟', '与信任的人多交流分享'] };
-      if (s <= 14) return { level: '中度抑郁', severity: 'orange', desc: '存在中度抑郁症状，对日常生活可能已有一定影响。', advice: ['建议寻求心理咨询师的专业支持', '告知家人或亲密朋友你的状态', '可向医院心理科或精神科咨询'] };
-      if (s <= 19) return { level: '中重度抑郁', severity: 'red', desc: '存在较明显的抑郁症状，日常生活受到明显影响。', advice: ['请尽快预约心理科或精神科医生', '不要独自承受，告诉身边信任的人', '危机时拨打心理援助热线：400-161-9995'] };
-      return { level: '重度抑郁', severity: 'red', desc: '存在严重抑郁症状，需要立即寻求专业帮助。', advice: ['请立即联系精神科医生或前往医院', '危机援助热线：400-161-9995 / 400-821-1215', '请让身边的人陪伴你'] };
+      if (s <= 4) return { level: '无或极少抑郁症状', severity: 'green', desc: '目前没有明显的抑郁相关症状，建议继续保持健康的生活习惯。', advice: ['维持规律的作息和运动', '保持社交联系和有意义的活动', '定期关注自己的情绪状态'] };
+      if (s <= 9) return { level: '轻微抑郁症状', severity: 'yellow', desc: '存在一些轻微的抑郁相关症状，可以先通过日常行动和支持资源改善状态。', advice: ['增加令自己有愉悦感的活动（行为激活）', '规律运动，每天至少30分钟', '与信任的人多交流分享'] };
+      if (s <= 14) return { level: '中度抑郁症状', severity: 'orange', desc: '存在中度抑郁相关症状，对日常生活可能已有一定影响，建议进一步寻求支持。', advice: ['建议联系 App 研究团队，说明你的测评结果和近期状态', '告知家人或亲密朋友你的状态', '必要时可向医院心理科或精神科咨询'] };
+      if (s <= 19) return { level: '中重度抑郁症状', severity: 'red', desc: '存在较明显的抑郁相关症状，日常生活可能受到明显影响，建议尽快获得人工支持。', advice: ['请尽快联系 App 研究团队或专业心理健康服务', '不要独自承受，告诉身边信任的人', '如果有立即伤害自己的风险，请联系当地急救或前往急诊'] };
+      return { level: '重度抑郁症状', severity: 'red', desc: '存在严重抑郁相关症状，建议立即寻求人工支持和专业帮助。', advice: ['请立即联系 App 研究团队，并尽快联系精神科医生或前往医院', '请让身边的人陪伴你，不要独处', '如果处于立即危险中，请联系当地急救或前往最近急诊'] };
     },
   },
   {
@@ -57,10 +57,10 @@ const SCALES: Scale[] = [
     maxScore: 21,
     displayScore: s => s,
     interpret: (s) => {
-      if (s <= 4) return { level: '极少焦虑', severity: 'green', desc: '目前焦虑水平在正常范围内。', advice: ['继续维持当前的放松习惯', '练习正念或冥想有助于长期保持', '关注生活中令你有意义感的事'] };
-      if (s <= 9) return { level: '轻微焦虑', severity: 'yellow', desc: '存在轻微焦虑症状，可以通过一些方式改善。', advice: ['尝试腹式呼吸或渐进式肌肉放松', '减少咖啡因和碎片化刷手机的习惯', '把担忧写下来，区分可控与不可控的事'] };
-      if (s <= 14) return { level: '中度焦虑', severity: 'orange', desc: '存在中度焦虑症状，建议积极寻求支持。', advice: ['建议预约心理咨询', '认知行为疗法（CBT）对焦虑有良好效果', '与家人或朋友分享你的感受'] };
-      return { level: '重度焦虑', severity: 'red', desc: '存在明显焦虑症状，请尽快寻求专业帮助。', advice: ['建议尽快就医（精神科/心理科）', '告诉身边信任的人你的状态', '焦虑是可以治疗的，请不要独自承受'] };
+      if (s <= 4) return { level: '极少焦虑症状', severity: 'green', desc: '目前焦虑相关症状较少，建议继续维持当前的放松和自我照顾习惯。', advice: ['继续维持当前的放松习惯', '练习正念或冥想有助于长期保持', '关注生活中令你有意义感的事'] };
+      if (s <= 9) return { level: '轻微焦虑症状', severity: 'yellow', desc: '存在轻微焦虑相关症状，可以先通过一些日常方法缓解。', advice: ['尝试腹式呼吸或渐进式肌肉放松', '减少咖啡因和碎片化刷手机的习惯', '把担忧写下来，区分可控与不可控的事'] };
+      if (s <= 14) return { level: '中度焦虑症状', severity: 'orange', desc: '存在中度焦虑相关症状，建议积极寻求人工支持。', advice: ['建议联系 App 研究团队，说明你的测评结果和近期困扰', '认知行为疗法（CBT）对焦虑有良好效果，可考虑专业咨询', '与家人或朋友分享你的感受'] };
+      return { level: '重度焦虑症状', severity: 'red', desc: '存在明显焦虑相关症状，建议尽快获得人工支持和专业帮助。', advice: ['请尽快联系 App 研究团队或专业心理健康服务', '告诉身边信任的人你的状态', '焦虑症状是可以被支持和改善的，请不要独自承受'] };
     },
   },
   {
@@ -75,10 +75,10 @@ const SCALES: Scale[] = [
     displayScore: s => s * 4,
     interpret: (s) => {
       const pct = s * 4;
-      if (pct >= 68) return { level: '幸福感良好', severity: 'green', desc: `幸福感指数 ${pct}/100，整体心理状态积极良好，继续保持！`, advice: ['继续维持带来幸福感的活动和人际关系', '将好的习惯和经验分享给身边的人'] };
-      if (pct >= 52) return { level: '幸福感尚可', severity: 'yellow', desc: `幸福感指数 ${pct}/100，整体还不错，但有一些值得改善的空间。`, advice: ['尝试增加日常中令你感到快乐的小事', '关注睡眠质量和规律作息'] };
-      if (pct >= 28) return { level: '幸福感偏低', severity: 'orange', desc: `幸福感指数 ${pct}/100，建议关注并改善当前的情绪状态。`, advice: ['进行行为激活，计划并执行有意义的活动', '考虑咨询专业心理咨询师'] };
-      return { level: '幸福感较差', severity: 'red', desc: `幸福感指数 ${pct}/100，建议寻求专业心理健康支持。`, advice: ['请预约心理咨询或精神科评估', '心理援助热线：400-161-9995'] };
+      if (pct >= 68) return { level: '幸福感良好', severity: 'green', desc: `幸福感指数 ${pct}/100，整体心理状态较积极，建议继续保持。`, advice: ['继续维持带来幸福感的活动和人际关系', '将好的习惯和经验分享给身边的人'] };
+      if (pct >= 50) return { level: '幸福感尚可', severity: 'yellow', desc: `幸福感指数 ${pct}/100，整体尚可，但仍有一些值得照顾和改善的空间。`, advice: ['尝试增加日常中令你感到快乐的小事', '关注睡眠质量和规律作息'] };
+      if (pct > 28) return { level: '幸福感偏低', severity: 'orange', desc: `幸福感指数 ${pct}/100，提示近期幸福感偏低，建议进一步关注当前情绪状态。`, advice: ['进行行为激活，计划并执行有意义的活动', '建议联系 App 研究团队，说明你的测评结果和近期状态'] };
+      return { level: '幸福感明显偏低', severity: 'red', desc: `幸福感指数 ${pct}/100，提示近期幸福感明显偏低，建议尽快获得人工支持。`, advice: ['请联系 App 研究团队或专业心理健康服务', '如果同时有强烈绝望感或伤害自己的念头，请联系当地急救或前往急诊'] };
     },
   },
 ];
@@ -148,7 +148,7 @@ function AssessmentPanel() {
           </TouchableOpacity>
         ))}
         <Text className="text-xs text-gray-400 text-center mt-2">
-          如有心理困扰，请拨打援助热线 400-161-9995
+          如有心理困扰，可以联系 App 研究团队获得进一步支持
         </Text>
       </View>
     );
@@ -236,10 +236,10 @@ function AssessmentPanel() {
         {hasSelfHarmNote && (
           <View className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
             <Text className="text-sm font-bold text-red-700 mb-1">❤️ 重要：请寻求帮助</Text>
-            <Text className="text-sm text-red-600 mb-2">你提到了有伤害自己的念头，请立即联系：</Text>
-            <Text className="text-sm font-medium text-red-700">• 全国心理援助热线：400-161-9995</Text>
-            <Text className="text-sm font-medium text-red-700">• 北京危机热线：010-82951332</Text>
-            <Text className="text-sm font-medium text-red-700">• 24小时生命热线：400-821-1215</Text>
+            <Text className="text-sm text-red-600 mb-2">你提到了有伤害自己的念头，请尽快让真实的人知道你的处境：</Text>
+            <Text className="text-sm font-medium text-red-700">• 联系 App 研究团队，说明你现在的风险和测评结果</Text>
+            <Text className="text-sm font-medium text-red-700">• 告诉身边可信任的人，请对方陪伴你</Text>
+            <Text className="text-sm font-medium text-red-700">• 如果你可能马上伤害自己，请联系当地急救或前往最近急诊</Text>
           </View>
         )}
 

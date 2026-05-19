@@ -73,6 +73,51 @@ sudo systemctl restart xiaonuan
 
 **前端 API base URL：** `http://47.239.197.238:8000`
 
+### 云数据库访问方式（不要公网暴露 PostgreSQL）
+
+本项目推荐用 SSH 隧道从本机访问云服务器内网 PostgreSQL，不要直接开放 PostgreSQL `5432` 到公网。
+
+在本机单独开一个终端并保持不关闭：
+
+```bash
+ssh -N -L 5433:127.0.0.1:5432 root@47.239.197.238
+```
+
+含义：本机 `localhost:5433` 转发到云服务器 `127.0.0.1:5432`。因此本地 `backend/.env` 的数据库地址应使用：
+
+```env
+DATABASE_URL=postgresql://xiaonuan:<数据库密码>@localhost:5433/xiaonuan_db
+```
+
+生成一批一人一码的邀请码：
+
+```powershell
+cd F:\selfmonitoring_demo\backend
+.\venv\Scripts\python.exe scripts\generate_access_codes.py `
+  --count 100 `
+  --prefix SM `
+  --batch invite-20260519 `
+  --description "内测邀请码"
+```
+
+pgAdmin 验证批次数量：
+
+```sql
+SELECT batch, COUNT(*)
+FROM public.access_codes
+GROUP BY batch
+ORDER BY batch;
+```
+
+查看最新邀请码：
+
+```sql
+SELECT code, description, is_active, max_uses, used_count, batch, created_at
+FROM public.access_codes
+ORDER BY created_at DESC
+LIMIT 20;
+```
+
 ---
 
 ## 后端文件结构

@@ -6,9 +6,15 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.access import has_ai_access, require_ai_access
 from app.database import get_db, SessionLocal
 from app.models import AudioRecord, MoodRecord, User, PlannedActivity, LifeDomain
-from app.schemas import MoodRecordResponse, RecordSubmitRequest, RecordConfirmRequest
+from app.schemas import (
+    ManualRecordCreateRequest,
+    MoodRecordResponse,
+    RecordSubmitRequest,
+    RecordConfirmRequest,
+)
 from app.llm_client import call_llm
 from app.prompts import safety_check_prompt, structured_extraction_prompt, empathic_feedback_prompt
 
@@ -50,6 +56,31 @@ def _get_recent_records_summary(db: Session, user_id: str, limit: int = 3) -> st
             f"愉悦度={pleasure}/10，重要性={importance}/10"
         )
     return "\n".join(summaries)
+
+
+def _clamp_score(value: Optional[float], default: float = 5.0) -> float:
+    try:
+        return max(0.0, min(10.0, float(value)))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def _mark_planned_completed(
+    db: Session,
+    planned_activity_id: Optional[str],
+    user_id: str,
+    record_id: str,
+) -> Optional[PlannedActivity]:
+    if not planned_activity_id:
+        return None
+    planned = db.query(PlannedActivity).filter(
+        PlannedActivity.id == planned_activity_id,
+        PlannedActivity.user_id == user_id,
+    ).first()
+    if planned:
+        planned.completed = True
+        planned.completion_record_id = record_id
+    return planned
 
 
 async def _run_ai_background(
@@ -117,6 +148,7 @@ async def submit_record(
     db: Session = Depends(get_db),
 ):
     user_id = req.user_id
+    require_ai_access(db, user_id)
 
     # Ensure user exists
     user = db.query(User).filter(User.id == user_id).first()
@@ -309,6 +341,58 @@ async def submit_record(
         False,  # standard path: safety check already done synchronously above
     )
 
+    return record
+
+
+@router.post("/manual", response_model=MoodRecordResponse)
+async def create_manual_record(
+    req: ManualRecordCreateRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Save a structured activity record without any LLM/ASR usage."""
+    user_id = req.user_id
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        user = User(id=user_id)
+        db.add(user)
+        db.commit()
+
+    activity = req.activity.strip()
+    if not activity:
+        raise HTTPException(status_code=400, detail="Activity is required")
+
+    pleasure_score = _clamp_score(req.pleasure_score)
+    importance_score = _clamp_score(req.importance_score)
+    thought = (req.thought or "").strip()
+    raw_text = activity if not thought else f"{activity}\n{thought}"
+
+    record = MoodRecord(
+        id=str(uuid.uuid4()),
+        user_id=user_id,
+        timestamp=datetime.now(),
+        raw_text=raw_text,
+        activity=activity,
+        thought=thought,
+        pleasure_score=pleasure_score,
+        importance_score=importance_score,
+        planned_activity_id=req.planned_activity_id,
+        life_domain_id=req.life_domain_id,
+        ai_immediate_feedback=None,
+        risk_level="safe",
+        confirmed=True,
+    )
+    db.add(record)
+    _mark_planned_completed(db, req.planned_activity_id, user_id, record.id)
+    db.commit()
+    db.refresh(record)
+    if has_ai_access(user):
+        background_tasks.add_task(
+            _run_ai_background,
+            record.id, raw_text, user_id,
+            activity, thought, pleasure_score, importance_score,
+            False,
+        )
     return record
 
 

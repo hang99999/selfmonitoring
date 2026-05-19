@@ -7,7 +7,7 @@ from sqlalchemy import inspect, text
 from app.database import engine, SessionLocal
 from app.life_domains import migrate_life_domains_to_global
 from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress, PhaseConfig
-from app.routers import records, stats, activities, chatbot, auth, supporters, audio, assessments
+from app.routers import records, stats, activities, chatbot, auth, supporters, audio, assessments, billing
 from app.prompts import (
     SAFETY_CHECK_SYSTEM,
     STRUCTURED_EXTRACTION_SYSTEM,
@@ -70,6 +70,42 @@ def _migrate():
                     "OR time_requirements_disabled_once IS NULL"
                 ))
 
+    inspector = inspect(engine)
+    if "users" in inspector.get_table_names():
+        columns = {col["name"] for col in inspector.get_columns("users")}
+        user_migrations = [
+            ("plan_type", "VARCHAR DEFAULT 'free'"),
+            ("premium_until", "TIMESTAMP"),
+            ("entitlement_source", "VARCHAR"),
+            ("revenuecat_app_user_id", "VARCHAR"),
+        ]
+        with engine.begin() as conn:
+            for column, definition in user_migrations:
+                if column not in columns:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {column} {definition}"))
+
+    inspector = inspect(engine)
+    if "access_codes" in inspector.get_table_names():
+        columns = {col["name"] for col in inspector.get_columns("access_codes")}
+        access_code_migrations = [
+            ("max_uses", "INTEGER DEFAULT 1"),
+            ("used_count", "INTEGER DEFAULT 0"),
+            ("used_by_user_id", "VARCHAR"),
+            ("used_at", "TIMESTAMP"),
+            ("expires_at", "TIMESTAMP"),
+            ("plan_type", "VARCHAR DEFAULT 'invite'"),
+            ("batch", "VARCHAR"),
+            ("created_at", "TIMESTAMP"),
+        ]
+        with engine.begin() as conn:
+            for column, definition in access_code_migrations:
+                if column not in columns:
+                    conn.execute(text(f"ALTER TABLE access_codes ADD COLUMN {column} {definition}"))
+            conn.execute(text("UPDATE access_codes SET max_uses = 1 WHERE max_uses IS NULL"))
+            conn.execute(text("UPDATE access_codes SET used_count = 0 WHERE used_count IS NULL"))
+            conn.execute(text("UPDATE access_codes SET plan_type = 'invite' WHERE plan_type IS NULL"))
+            conn.execute(text("UPDATE access_codes SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -90,7 +126,15 @@ async def lifespan(app: FastAPI):
 
         # Seed default access code
         if not db.query(AccessCode).first():
-            db.add(AccessCode(code="STUDY2024", description="研究用邀请码", is_active=True))
+            db.add(AccessCode(
+                code="STUDY2024",
+                description="研究用邀请码",
+                is_active=True,
+                max_uses=1,
+                used_count=0,
+                plan_type="invite",
+                batch="default",
+            ))
             db.commit()
     finally:
         db.close()
@@ -139,6 +183,7 @@ app.include_router(auth.router)
 app.include_router(supporters.router)
 app.include_router(audio.router)
 app.include_router(assessments.router)
+app.include_router(billing.router)
 
 
 @app.get("/")

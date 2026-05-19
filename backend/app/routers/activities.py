@@ -7,6 +7,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.access import require_ai_access
 from app.database import get_db
 from app.life_domains import ensure_global_life_domains
 from app.models import User, LifeDomain, Value, Activity, PlannedActivity, DailyMood
@@ -249,6 +250,7 @@ async def breakdown_planned(planned_id: str, db: Session = Depends(get_db)):
     planned = db.query(PlannedActivity).filter(PlannedActivity.id == planned_id).first()
     if not planned:
         raise HTTPException(status_code=404, detail="Planned activity not found")
+    require_ai_access(db, planned.user_id)
 
     sys_prompt = (
         "你是一个行为激活治疗助手，帮助用户将困难的活动拆解成更小、更容易执行的步骤。"

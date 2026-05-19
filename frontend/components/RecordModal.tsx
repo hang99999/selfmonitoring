@@ -3,12 +3,13 @@ import {
   Modal, View, Text, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
-import { api } from '../src/api';
+import { api, isAiAccessRequiredError } from '../src/api';
 import type { MoodRecord, LifeDomain } from '../src/types';
 import VoiceRecordButton from './VoiceRecordButton';
 
 // Fixed domain list (names match DEFAULT_LIFE_DOMAINS on backend)
 const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '自我关怀', '日常责任', '其他'] as const;
+const AI_ACCESS_MESSAGE = '需要先解锁或开通会员，才能使用自由记录解析。';
 
 interface Props {
   visible: boolean;
@@ -49,12 +50,42 @@ function ScoreRow({ label, value, onChange, activeColor }: {
   );
 }
 
+function RecordModeTabs({ value, onChange }: {
+  value: 'input' | 'manual';
+  onChange: (value: 'input' | 'manual') => void;
+}) {
+  const modes: Array<{ value: 'input' | 'manual'; label: string }> = [
+    { value: 'input', label: '自由记录' },
+    { value: 'manual', label: '手动记录' },
+  ];
+  return (
+    <View className="flex-row bg-gray-100 rounded-2xl p-1 mb-5">
+      {modes.map(mode => {
+        const active = value === mode.value;
+        return (
+          <TouchableOpacity
+            key={mode.value}
+            onPress={() => onChange(mode.value)}
+            className="flex-1 py-2.5 rounded-xl items-center"
+            style={{ backgroundColor: active ? '#ffffff' : 'transparent' }}
+          >
+            <Text className={`text-sm font-semibold ${active ? 'text-gray-800' : 'text-gray-500'}`}>
+              {mode.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 export default function RecordModal({
   visible, onClose, onRecordSubmitted,
   plannedActivityId, plannedActivityName, prefillActivity,
   userId = 'default_user',
 }: Props) {
-  const [step, setStep] = useState<'input' | 'loading' | 'result' | 'done' | 'crisis'>('input');
+  const [step, setStep] = useState<'input' | 'manual' | 'loading' | 'result' | 'done' | 'crisis'>('input');
+  const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
   const [text, setText] = useState(prefillActivity ? `做了：${prefillActivity}` : '');
   const [record, setRecord] = useState<MoodRecord | null>(null);
   const [activity, setActivity] = useState('');
@@ -70,6 +101,7 @@ export default function RecordModal({
 
   const reset = () => {
     setStep('input');
+    setAiEnabled(null);
     setText(prefillActivity ? `做了：${prefillActivity}` : '');
     setRecord(null);
     setActivity('');
@@ -83,6 +115,38 @@ export default function RecordModal({
   };
 
   const handleClose = () => { reset(); onClose(); };
+
+  useEffect(() => {
+    if (!visible) return;
+    let cancelled = false;
+    setError('');
+    setAiEnabled(null);
+    api.getUnlockStatus(userId)
+      .then((status) => {
+        if (cancelled) return;
+        const premiumUntil = status.premium_until ? new Date(status.premium_until) : null;
+        const enabled = Boolean(status.is_unlocked || (premiumUntil && premiumUntil > new Date()));
+        setAiEnabled(enabled);
+        if (!enabled) {
+          setStep('manual');
+          setActivity(plannedActivityName || prefillActivity || '');
+          setThought('');
+          setPleasure(null);
+          setImportance(null);
+          setSelectedDomainId(undefined);
+        } else {
+          setStep('input');
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAiEnabled(false);
+        setStep('manual');
+        setActivity(plannedActivityName || prefillActivity || '');
+      });
+    api.getDomains(userId).then(setDomains).catch(() => {});
+    return () => { cancelled = true; };
+  }, [visible, userId, plannedActivityName, prefillActivity]);
 
   const handleSubmitText = async () => {
     if (!text.trim() || submitting) return;
@@ -105,8 +169,8 @@ export default function RecordModal({
       } else {
         setStep('result');
       }
-    } catch {
-      setError('提交失败，请重试');
+    } catch (error) {
+      setError(isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '提交失败，请重试');
       setStep('input');
     } finally {
       setSubmitting(false);
@@ -129,6 +193,30 @@ export default function RecordModal({
       setTimeout(() => { handleClose(); }, 1800);
     } catch {
       setError('确认失败，请重试');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitManual = async () => {
+    if (!activity.trim() || pleasure === null || importance === null || submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const saved = await api.submitManualRecord({
+        user_id: userId,
+        activity: activity.trim(),
+        thought: thought.trim(),
+        pleasure_score: pleasure,
+        importance_score: importance,
+        life_domain_id: selectedDomainId ?? null,
+        planned_activity_id: plannedActivityId,
+      });
+      setStep('done');
+      onRecordSubmitted?.(saved.id);
+      setTimeout(() => { handleClose(); }, 1200);
+    } catch {
+      setError('保存失败，请重试');
     } finally {
       setSubmitting(false);
     }
@@ -161,10 +249,18 @@ export default function RecordModal({
             </View>
           )}
 
+          {step === 'input' && aiEnabled === null && (
+            <View className="items-center py-12">
+              <ActivityIndicator size="large" color="#f97316" />
+              <Text className="text-gray-500 mt-4 text-sm">正在准备记录...</Text>
+            </View>
+          )}
+
           {/* input */}
-          {step === 'input' && (
+          {step === 'input' && aiEnabled === true && (
             <>
-              <Text className="text-lg font-bold text-gray-800 mb-1">记录活动</Text>
+              <RecordModeTabs value="input" onChange={setStep} />
+              <Text className="text-lg font-bold text-gray-800 mb-1">自由记录</Text>
               <Text className="text-sm text-gray-400 mb-4">你今天做了什么？简单描述一下</Text>
 
               {plannedActivityName && (
@@ -212,6 +308,98 @@ export default function RecordModal({
                 <Text className="text-white font-semibold text-base">提交记录</Text>
               </TouchableOpacity>
             </>
+          )}
+
+          {/* manual */}
+          {step === 'manual' && (
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {aiEnabled === true && <RecordModeTabs value="manual" onChange={setStep} />}
+              <Text className="text-lg font-bold text-gray-800 mb-1">手动记录活动</Text>
+              <Text className="text-sm text-gray-400 mb-5">
+                {aiEnabled
+                  ? '直接填写活动和评分，保存后小暖会回应你。'
+                  : '填写活动和评分即可保存；自由记录和语音转写需解锁后使用。'}
+              </Text>
+
+              {plannedActivityName && (
+                <View className="mb-4 px-4 py-3 bg-blue-50 rounded-xl flex-row items-center">
+                  <Text className="text-blue-500 text-sm mr-2">•</Text>
+                  <Text className="text-sm text-blue-700 flex-1">
+                    正在记录：<Text className="font-semibold">{plannedActivityName}</Text>
+                  </Text>
+                </View>
+              )}
+
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-500 mb-1">活动</Text>
+                <TextInput
+                  value={activity}
+                  onChangeText={setActivity}
+                  placeholder="比如：散步 10 分钟、给朋友发消息、整理书桌"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-700 bg-white"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+
+              <View className="mb-5">
+                <Text className="text-sm font-medium text-gray-500 mb-1">
+                  想法 <Text className="text-gray-400 font-normal">（可选）</Text>
+                </Text>
+                <TextInput
+                  value={thought}
+                  onChangeText={setThought}
+                  placeholder="这次活动让你想到什么..."
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-700 bg-white"
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+
+              <View className="mb-5">
+                <Text className="text-sm font-medium text-gray-500 mb-2">生活领域</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {DOMAIN_NAMES.map(name => {
+                    const domain = domains.find(d => d.name === name);
+                    const domainId = name === '其他' ? null : (domain?.id ?? null);
+                    const isSelected = selectedDomainId === domainId;
+                    return (
+                      <TouchableOpacity
+                        key={name}
+                        onPress={() => setSelectedDomainId(domainId)}
+                        className="px-3 py-1.5 rounded-full border"
+                        style={{
+                          backgroundColor: isSelected ? '#f97316' : '#f9fafb',
+                          borderColor: isSelected ? '#f97316' : '#e5e7eb',
+                        }}
+                      >
+                        <Text style={{ color: isSelected ? '#fff' : '#6b7280' }} className="text-xs font-medium">
+                          {name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View className="bg-gray-50 rounded-2xl p-4 mb-5">
+                <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">活动评分</Text>
+                <ScoreRow label="愉悦度（有多享受？）" value={pleasure} onChange={setPleasure} activeColor="#f97316" />
+                <ScoreRow label="重要性（对你有多重要？）" value={importance} onChange={setImportance} activeColor="#6366f1" />
+              </View>
+
+              {error ? <Text className="text-red-500 text-sm mb-3">{error}</Text> : null}
+
+              <TouchableOpacity
+                onPress={handleSubmitManual}
+                disabled={!activity.trim() || pleasure === null || importance === null || submitting}
+                className="w-full py-4 bg-orange-500 rounded-2xl items-center mb-2"
+                style={{ opacity: !activity.trim() || pleasure === null || importance === null ? 0.4 : 1 }}
+              >
+                {submitting
+                  ? <ActivityIndicator color="white" />
+                  : <Text className="text-white font-semibold text-base">保存记录</Text>
+                }
+              </TouchableOpacity>
+            </ScrollView>
           )}
 
           {/* result */}

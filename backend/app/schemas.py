@@ -17,6 +17,16 @@ class RecordSubmitRequest(BaseModel):
     audio_record_id: Optional[str] = None  # 关联已上传的录音记录
 
 
+class ManualRecordCreateRequest(BaseModel):
+    user_id: str = "default_user"
+    activity: str
+    thought: Optional[str] = None
+    pleasure_score: float
+    importance_score: float
+    life_domain_id: Optional[str] = None
+    planned_activity_id: Optional[str] = None
+
+
 class RecordConfirmRequest(BaseModel):
     activity: Optional[str] = None
     thought: Optional[str] = None
