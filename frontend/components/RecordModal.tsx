@@ -222,13 +222,15 @@ export default function RecordModal({
     }
   };
 
+  const canDismiss = step === 'input' || step === 'manual' || step === 'result';
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         className="flex-1 justify-end"
       >
-        <TouchableOpacity className="flex-1" activeOpacity={1} onPress={step === 'input' ? handleClose : undefined} />
+        <TouchableOpacity className="flex-1" activeOpacity={1} onPress={canDismiss ? handleClose : undefined} />
 
         <View className={`rounded-t-3xl px-6 pt-6 pb-10 shadow-2xl ${step === 'crisis' ? 'bg-red-50' : 'bg-white'}`}>
 
@@ -306,6 +308,9 @@ export default function RecordModal({
                 style={{ opacity: !text.trim() ? 0.4 : 1 }}
               >
                 <Text className="text-white font-semibold text-base">提交记录</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleClose} className="mt-3 items-center py-2">
+                <Text className="text-gray-400 text-sm">取消</Text>
               </TouchableOpacity>
             </>
           )}
@@ -398,6 +403,9 @@ export default function RecordModal({
                   ? <ActivityIndicator color="white" />
                   : <Text className="text-white font-semibold text-base">保存记录</Text>
                 }
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleClose} className="items-center py-2">
+                <Text className="text-gray-400 text-sm">取消</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
