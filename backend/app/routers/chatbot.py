@@ -250,7 +250,7 @@ def _compute_user_state(db: Session, user_id: str) -> dict:
     )
     high_importance_low_enjoyment_ratio = round(hi_lo / len(records_7d), 2) if records_7d else 0.0
 
-    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).all()
+    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id.is_(None)).all()
     domain_id_to_name = {d.id: d.name for d in all_domains}
 
     recent_activity_records = [
@@ -528,7 +528,7 @@ def _apply_phase_review_window(
 ) -> None:
     start_date = start.strftime("%Y-%m-%d")
     end_date = end.strftime("%Y-%m-%d")
-    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).all()
+    all_domains = db.query(LifeDomain).filter(LifeDomain.user_id.is_(None)).all()
     domain_id_to_name = {d.id: d.name for d in all_domains}
 
     records = (

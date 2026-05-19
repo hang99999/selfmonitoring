@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.life_domains import ensure_global_life_domains
 from app.models import User, LifeDomain, Value, Activity, PlannedActivity, DailyMood
 from app.schemas import (
     LifeDomainCreate, LifeDomainResponse,
@@ -20,14 +21,6 @@ from app.schemas import (
 from app.llm_client import call_llm
 
 router = APIRouter(prefix="/api/activity", tags=["activities"])
-
-DEFAULT_LIFE_DOMAINS = [
-    {"name": "亲密关系", "description": "家人、伴侣、朋友等亲近关系"},
-    {"name": "教育与职业", "description": "学习、工作、职业发展"},
-    {"name": "休闲兴趣", "description": "爱好、娱乐、创意活动"},
-    {"name": "自我关怀", "description": "身体健康、心理健康、精神成长"},
-    {"name": "日常责任", "description": "家务、生活管理、社会责任"},
-]
 
 
 def _ensure_user(db: Session, user_id: str):
@@ -55,31 +48,17 @@ def _parse_json(text: str) -> dict:
 
 @router.get("/domains", response_model=List[LifeDomainResponse])
 def list_domains(user_id: str = Query(default="default_user"), db: Session = Depends(get_db)):
-    domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).all()
-    if not domains:
-        _ensure_user(db, user_id)
-        domains = []
-        for d in DEFAULT_LIFE_DOMAINS:
-            domain = LifeDomain(
-                id=str(uuid.uuid4()),
-                user_id=user_id,
-                name=d["name"],
-                description=d["description"],
-            )
-            db.add(domain)
-            domains.append(domain)
-        db.commit()
-        for d in domains:
-            db.refresh(d)
-    return domains
+    _ensure_user(db, user_id)
+    return ensure_global_life_domains(db)
 
 
 @router.post("/domains", response_model=LifeDomainResponse)
 def create_domain(body: LifeDomainCreate, db: Session = Depends(get_db)):
-    _ensure_user(db, body.user_id)
+    if body.user_id:
+        _ensure_user(db, body.user_id)
     domain = LifeDomain(
         id=str(uuid.uuid4()),
-        user_id=body.user_id,
+        user_id=None,
         name=body.name,
         description=body.description,
     )

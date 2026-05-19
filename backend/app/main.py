@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
 from app.database import engine, SessionLocal
+from app.life_domains import migrate_life_domains_to_global
 from app.models import Base, User, SystemPrompt, AccessCode, CompanionSettings, TreatmentProgress, PhaseConfig
 from app.routers import records, stats, activities, chatbot, auth, supporters, audio
 from app.prompts import (
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI):
 
         # Seed system prompts (only insert if key does not exist yet)
         _seed_prompts(db)
+        migrate_life_domains_to_global(db)
 
         # Seed default access code
         if not db.query(AccessCode).first():

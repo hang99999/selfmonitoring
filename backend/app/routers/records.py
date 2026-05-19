@@ -130,7 +130,7 @@ async def submit_record(
         if not domain_name or domain_name == "其他":
             return None
         domain = db.query(LifeDomain).filter(
-            LifeDomain.user_id == uid,
+            LifeDomain.user_id.is_(None),
             LifeDomain.name == domain_name,
         ).first()
         return domain.id if domain else None

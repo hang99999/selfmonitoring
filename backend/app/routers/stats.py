@@ -257,8 +257,8 @@ async def domain_radar(
         key = p.life_domain_id
         counts[key] = counts.get(key, 0) + 1
 
-    # Build result: 5 named domains + "其他"
-    domains = db.query(LifeDomain).filter(LifeDomain.user_id == user_id).order_by(LifeDomain.created_at).all()
+    # Build result: 5 global named domains + "其他"
+    domains = db.query(LifeDomain).filter(LifeDomain.user_id.is_(None)).order_by(LifeDomain.created_at).all()
     result: list[DomainRadarItem] = []
     for d in domains:
         result.append(DomainRadarItem(domain_id=d.id, domain_name=d.name, count=counts.get(d.id, 0)))

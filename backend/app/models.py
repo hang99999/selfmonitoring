@@ -31,11 +31,11 @@ class AccessCode(Base):
 
 
 class LifeDomain(Base):
-    """生活领域（5个）：亲密关系 / 教育与职业 / 休闲兴趣 / 自我关怀 / 日常责任"""
+    """Global life domains shared by all users."""
     __tablename__ = "life_domains"
 
     id = Column(String, primary_key=True, default=generate_uuid)
-    user_id = Column(String, ForeignKey("users.id"), default="default_user")
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=localnow)

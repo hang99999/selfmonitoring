@@ -30,12 +30,12 @@ class RecordConfirmRequest(BaseModel):
 class LifeDomainCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    user_id: str = "default_user"
+    user_id: Optional[str] = None
 
 
 class LifeDomainResponse(BaseModel):
     id: str
-    user_id: str
+    user_id: Optional[str] = None
     name: str
     description: Optional[str] = None
     created_at: datetime
