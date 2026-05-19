@@ -292,3 +292,28 @@ class AudioRecordResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- Assessment Schemas ---
+
+class AssessmentResultCreate(BaseModel):
+    user_id: str = "default_user"
+    scale_type: str
+    score: int
+    display_score: Optional[int] = None
+    severity_level: Optional[str] = None
+    answers: List[int]
+
+
+class AssessmentResultResponse(BaseModel):
+    id: str
+    user_id: str
+    scale_type: str
+    score: int
+    display_score: Optional[int] = None
+    severity_level: Optional[str] = None
+    answers: List[int]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -98,6 +98,7 @@ type AStep =
   | { type: 'result'; scale: Scale; score: number; answers: number[] };
 
 function AssessmentPanel() {
+  const userId = useUserId();
   const [step, setStep] = useState<AStep>({ type: 'list' });
 
   const start = (scale: Scale) => setStep({ type: 'taking', scale, answers: [], current: 0 });
@@ -107,6 +108,15 @@ function AssessmentPanel() {
     const newAnswers = [...step.answers, value];
     if (newAnswers.length === step.scale.questions.length) {
       const score = newAnswers.reduce((a, b) => a + b, 0);
+      const interp = step.scale.interpret(score);
+      api.saveAssessmentResult({
+        user_id: userId,
+        scale_type: step.scale.id,
+        score,
+        display_score: step.scale.displayScore(score),
+        severity_level: interp.level,
+        answers: newAnswers,
+      }).catch(err => console.warn('Failed to save assessment result', err));
       setStep({ type: 'result', scale: step.scale, score, answers: newAnswers });
     } else {
       setStep({ ...step, answers: newAnswers, current: step.current + 1 });

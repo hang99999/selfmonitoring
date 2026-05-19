@@ -95,6 +95,17 @@ export interface DailyMood {
   created_at: string;
 }
 
+export interface AssessmentResult {
+  id: string;
+  user_id: string;
+  scale_type: string;
+  score: number;
+  display_score?: number | null;
+  severity_level?: string | null;
+  answers: number[];
+  created_at: string;
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

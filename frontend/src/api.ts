@@ -3,7 +3,7 @@ import type {
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
   TreatmentProgressData, Supporter, PlannedActivitySupporter,
-  AudioUploadResponse,
+  AudioUploadResponse, AssessmentResult,
 } from './types';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
@@ -220,6 +220,26 @@ export const api = {
 
   getDailyMood: (date: string, userId = 'default_user') =>
     request<DailyMood | null>(`/api/activity/daily-mood?user_id=${userId}&date=${date}`),
+
+  // --- Assessments ---
+  saveAssessmentResult: (data: {
+    scale_type: string;
+    score: number;
+    display_score?: number;
+    severity_level?: string;
+    answers: number[];
+    user_id?: string;
+  }) =>
+    request<AssessmentResult>('/api/assessments', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: 'default_user', ...data }),
+    }),
+
+  listAssessmentResults: (userId = 'default_user', scaleType?: string, limit = 50) => {
+    const params = new URLSearchParams({ user_id: userId, limit: String(limit) });
+    if (scaleType) params.set('scale_type', scaleType);
+    return request<AssessmentResult[]>(`/api/assessments?${params}`);
+  },
 
   // --- Chatbot ---
   getChatbotState: (userId = 'default_user') =>

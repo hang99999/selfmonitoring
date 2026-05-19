@@ -256,6 +256,20 @@ class AudioRecord(Base):
     created_at = Column(DateTime, default=localnow)
 
 
+class AssessmentResult(Base):
+    """Saved mental-health screening result, e.g. PHQ-9, GAD-7, or WHO-5."""
+    __tablename__ = "assessment_results"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    scale_type = Column(String, nullable=False)
+    score = Column(Integer, nullable=False)
+    display_score = Column(Integer, nullable=True)
+    severity_level = Column(String, nullable=True)
+    answers_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=localnow)
+
+
 class SystemPrompt(Base):
     """LLM prompt 模板 — 可在 pgAdmin 中直接编辑 content 字段来调整模型行为"""
     __tablename__ = "system_prompts"
