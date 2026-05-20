@@ -4,7 +4,7 @@ import json
 import uuid
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.access import require_ai_access
@@ -19,6 +19,7 @@ from app.schemas import (
     PlannedActivityReschedule,
     DailyMoodCreate, DailyMoodResponse,
 )
+from app.i18n import get_user_language, output_language_rule
 from app.llm_client import call_llm
 
 router = APIRouter(prefix="/api/activity", tags=["activities"])
@@ -245,12 +246,17 @@ def reschedule_planned(
 
 
 @router.post("/planned/{planned_id}/breakdown")
-async def breakdown_planned(planned_id: str, db: Session = Depends(get_db)):
+async def breakdown_planned(
+    planned_id: str,
+    db: Session = Depends(get_db),
+    app_language: str | None = Header(default=None, alias="X-App-Language"),
+):
     """Call LLM to break down a planned activity into smaller steps (BATD-R shaping principle)."""
     planned = db.query(PlannedActivity).filter(PlannedActivity.id == planned_id).first()
     if not planned:
         raise HTTPException(status_code=404, detail="Planned activity not found")
     require_ai_access(db, planned.user_id)
+    language = get_user_language(db, planned.user_id, app_language)
 
     sys_prompt = (
         "你是一个行为激活治疗助手，帮助用户将困难的活动拆解成更小、更容易执行的步骤。"
@@ -262,16 +268,24 @@ async def breakdown_planned(planned_id: str, db: Session = Depends(get_db)):
         "每个步骤应该足够小，不需要额外准备就能立刻开始做。"
         '请用JSON格式返回：{"steps": ["步骤1", "步骤2", ...]}'
     )
-    result = await call_llm(sys_prompt, user_msg)
+    result = await call_llm(sys_prompt + output_language_rule(language), user_msg)
     data = _parse_json(result)
     steps = data.get("steps", [])
     if not isinstance(steps, list) or not steps:
-        steps = [
-            "先找一个安静舒适的地方，做3次深呼吸",
-            f"把「{planned.activity_name}」想象成只需要做1分钟的事情",
-            "先开始那1分钟，完成后再决定要不要继续",
-            "完成任何一小步都值得给自己一个认可",
-        ]
+        if language == "en":
+            steps = [
+                "Find a quiet, comfortable place and take 3 slow breaths",
+                f"Imagine '{planned.activity_name}' as something you only need to do for 1 minute",
+                "Start with that 1 minute, then decide whether to continue",
+                "Give yourself credit for completing any small step",
+            ]
+        else:
+            steps = [
+                "先找一个安静舒适的地方，做3次深呼吸",
+                f"把「{planned.activity_name}」想象成只需要做1分钟的事情",
+                "先开始那1分钟，完成后再决定要不要继续",
+                "完成任何一小步都值得给自己一个认可",
+            ]
     return {"steps": steps}
 
 

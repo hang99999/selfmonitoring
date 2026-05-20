@@ -5,6 +5,7 @@ import type {
   TreatmentProgressData, Supporter, PlannedActivitySupporter,
   AudioUploadResponse, AssessmentResult,
 } from './types';
+import { AppLanguage, getStoredLanguage } from './i18n';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
 // 开发时手机和电脑在同一 WiFi 下，指向电脑局域网 IP
@@ -12,9 +13,14 @@ const DEFAULT_API_BASE = 'http://47.239.197.238:8000';
 const BASE = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE;
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const language = await getStoredLanguage();
   const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-App-Language': language,
+      ...((options?.headers as Record<string, string> | undefined) ?? {}),
+    },
   });
   if (!res.ok) {
     const detail = await res.text();
@@ -62,6 +68,7 @@ export const api = {
     }),
 
   uploadAudio: async (fileUri: string, userId = 'default_user'): Promise<AudioUploadResponse> => {
+    const language = await getStoredLanguage();
     const lowerUri = fileUri.toLowerCase();
     const isWav = lowerUri.includes('.wav');
     const isM4a = lowerUri.includes('.m4a');
@@ -77,6 +84,7 @@ export const api = {
     formData.append('user_id', userId);
     const res = await fetch(`${BASE}/api/audio/upload`, {
       method: 'POST',
+      headers: { 'X-App-Language': language },
       body: formData,
     });
     if (!res.ok) {
@@ -363,5 +371,12 @@ export const api = {
       plan_type?: string;
       premium_until?: string | null;
       entitlement_source?: string | null;
+      language?: AppLanguage;
     }>(`/api/auth/status?user_id=${userId}`),
+
+  setLanguage: (userId: string, language: AppLanguage) =>
+    request<{ ok: boolean; language: AppLanguage }>('/api/auth/language', {
+      method: 'PUT',
+      body: JSON.stringify({ user_id: userId, language }),
+    }),
 };

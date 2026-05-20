@@ -8,18 +8,22 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
+import { AppLanguage, translateDomainName, useLanguage } from '../../src/i18n';
 import { useUserId } from '../../src/userStore';
 import type { Activity, LifeDomain, TreatmentProgressData, Supporter } from '../../src/types';
 
-function getGreeting(): string {
+function getGreeting(t: ReturnType<typeof useLanguage>['t']): string {
   const h = new Date().getHours();
-  if (h < 12) return '早上好';
-  if (h < 18) return '下午好';
-  return '晚上好';
+  if (h < 12) return t('greetingMorning');
+  if (h < 18) return t('greetingAfternoon');
+  return t('greetingEvening');
 }
 
-function getDateString(): string {
+function getDateString(language: AppLanguage): string {
   const now = new Date();
+  if (language === 'en') {
+    return now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  }
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
   return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 星期${weekDays[now.getDay()]}`;
 }
@@ -30,6 +34,7 @@ function toDateStr(d: Date) {
 
 // ── Plan Modal ────────────────────────────────────────────────────────────────
 function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: () => void; userId: string }) {
+  const { language, t } = useLanguage();
   const [name, setName] = useState('');
   const [selectedDate, setSelectedDate] = useState(toDateStr(new Date()));
   const [allDay, setAllDay] = useState(true);
@@ -80,9 +85,16 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
 
   const dateOptions = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() + i);
-    const labels = ['今天', '明天', '后天'];
+    const labels = language === 'en' ? ['Today', 'Tomorrow', 'Later'] : ['今天', '明天', '后天'];
     const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-    return { date: toDateStr(d), label: labels[i] ?? `周${weekDays[d.getDay()]}` };
+    return {
+      date: toDateStr(d),
+      label: i < 3
+        ? labels[i]
+        : language === 'en'
+          ? d.toLocaleDateString('en-US', { weekday: 'short' })
+          : `周${weekDays[d.getDay()]}`,
+    };
   });
 
   const handleSubmit = async () => {
@@ -125,17 +137,17 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
         {done ? (
           <View className="items-center py-10">
             <Text className="text-5xl mb-3">📅</Text>
-            <Text className="font-semibold text-gray-800 text-lg">已加入日程！</Text>
+            <Text className="font-semibold text-gray-800 text-lg">{t('plannedAdded')}</Text>
           </View>
         ) : (
           <>
-            <Text className="text-lg font-bold text-gray-800 mb-5">计划一项活动</Text>
+            <Text className="text-lg font-bold text-gray-800 mb-5">{t('planOneActivity')}</Text>
 
-            <Text className="text-sm font-medium text-gray-600 mb-2">活动名称</Text>
+            <Text className="text-sm font-medium text-gray-600 mb-2">{t('activityName')}</Text>
             <TextInput
               value={name}
               onChangeText={handleNameChange}
-              placeholder="例如：出门散步30分钟"
+              placeholder={t('activityNamePlaceholder')}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-1"
               placeholderTextColor="#9ca3af"
             />
@@ -146,14 +158,14 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
               }}
             >
               <Text className="text-xs text-indigo-500 mb-3">
-                {showLibrary ? '▾ 收起活动库' : '▸ 从活动库选取'}
+                {showLibrary ? t('collapseLibrary') : t('chooseFromLibrary')}
               </Text>
             </TouchableOpacity>
             {showLibrary && (
               <View className="border border-gray-200 rounded-xl mb-4 max-h-32 overflow-hidden">
                 <ScrollView>
                   {libraryActivities.length === 0
-                    ? <Text className="text-xs text-gray-400 px-3 py-3 text-center">活动库为空</Text>
+                    ? <Text className="text-xs text-gray-400 px-3 py-3 text-center">{t('emptyActivityLibrary')}</Text>
                     : libraryActivities.map(a => (
                         <TouchableOpacity
                           key={a.id}
@@ -170,7 +182,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
 
             {domains.length > 0 && (
               <>
-                <Text className="text-sm font-medium text-gray-600 mb-2">生活领域（可选）</Text>
+                <Text className="text-sm font-medium text-gray-600 mb-2">{t('lifeDomainOptional')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
                   <View className="flex-row gap-2">
                     <TouchableOpacity
@@ -182,7 +194,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
                       }}
                     >
                       <Text style={{ color: selectedDomainId === null ? '#fff' : '#4b5563' }} className="text-sm font-medium">
-                        其他
+                        {t('other')}
                       </Text>
                     </TouchableOpacity>
                     {domains.map(domain => (
@@ -196,7 +208,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
                         }}
                       >
                         <Text style={{ color: selectedDomainId === domain.id ? '#fff' : '#4b5563' }} className="text-sm font-medium">
-                          {domain.name}
+                          {translateDomainName(domain.name, language)}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -205,7 +217,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
               </>
             )}
 
-            <Text className="text-sm font-medium text-gray-600 mb-2">日期</Text>
+            <Text className="text-sm font-medium text-gray-600 mb-2">{t('date')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
               <View className="flex-row gap-2">
                 {dateOptions.map(opt => (
@@ -226,7 +238,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
               </View>
             </ScrollView>
 
-            <Text className="text-sm font-medium text-gray-600 mb-2">时间</Text>
+            <Text className="text-sm font-medium text-gray-600 mb-2">{t('time')}</Text>
             <View className="flex-row gap-2 mb-3">
               {[true, false].map(isAllDay => (
                 <TouchableOpacity
@@ -236,7 +248,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
                   style={{ backgroundColor: allDay === isAllDay ? '#6366f1' : '#fff', borderColor: allDay === isAllDay ? '#6366f1' : '#e5e7eb' }}
                 >
                   <Text style={{ color: allDay === isAllDay ? '#fff' : '#4b5563' }} className="text-sm font-medium">
-                    {isAllDay ? '全天' : '指定时间'}
+                    {isAllDay ? t('allDay') : t('specificTime')}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -263,8 +275,8 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
 
             {supporters.length > 0 && (
               <>
-                <Text className="text-sm font-medium text-gray-600 mb-1">寻求支持（可选）</Text>
-                <Text className="text-xs text-gray-400 mb-2">选择可以帮助你完成这项活动的人，最多3位</Text>
+                <Text className="text-sm font-medium text-gray-600 mb-1">{t('seekSupportOptional')}</Text>
+                <Text className="text-xs text-gray-400 mb-2">{t('seekSupportHint')}</Text>
                 <View className="flex-row flex-wrap gap-2 mb-5">
                   {supporters.map(s => {
                     const selected = selectedSupporterIds.has(s.id);
@@ -295,7 +307,7 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
             >
               {submitting
                 ? <ActivityIndicator color="white" />
-                : <Text className="text-white font-semibold text-base">确定计划</Text>
+                : <Text className="text-white font-semibold text-base">{t('confirmPlan')}</Text>
               }
             </TouchableOpacity>
           </>
@@ -314,12 +326,42 @@ const PHASE_CONVERSATION: Record<string, string> = {
   review_cycle: '每周：回顾进度 → 调整计划 → 安排新的一周',
 };
 
+const PHASE_CONVERSATION_EN: Record<string, string> = {
+  intro:        'Learn the basics of behavioral activation and start noticing activities and mood',
+  setup:        'Explore what matters to you and build a meaningful activity library',
+  first_review: 'Review last week, identify obstacles, and find practical next steps',
+  review_cycle: 'Weekly rhythm: review progress, adjust plans, and schedule the next week',
+};
+
+function phaseLabel(phase: string, cycle: number | null | undefined, language: AppLanguage) {
+  if (language !== 'en') return null;
+  if (phase === 'intro') return 'Week 1 · Start monitoring';
+  if (phase === 'setup') return 'Week 2 · Values × Activities × Plans';
+  if (phase === 'first_review') return 'Week 3 · First review';
+  if (phase === 'review_cycle') return `Review cycle · Round ${cycle ?? 1}`;
+  return null;
+}
+
+function criterionLabel(c: TreatmentProgressData['criteria'][number], language: AppLanguage) {
+  if (language !== 'en') return c.label;
+  const target = c.target ?? 1;
+  const labels: Record<string, string> = {
+    records: `Submit at least ${target} activity record${target > 1 ? 's' : ''}`,
+    values: `Add at least ${target} value${target > 1 ? 's' : ''}`,
+    activities: `Add at least ${target} activit${target > 1 ? 'ies' : 'y'} to the library`,
+    planned: `Schedule at least ${target} planned activit${target > 1 ? 'ies' : 'y'}`,
+    completed: `Complete at least ${target} planned activit${target > 1 ? 'ies' : 'y'}`,
+  };
+  return labels[c.key] ?? c.label;
+}
+
 function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
   data: TreatmentProgressData;
   onStartSession: () => void;
   onOpenChat: () => void;
   onAdvance: () => Promise<void>;
 }) {
+  const { language, t } = useLanguage();
   const [expanded, setExpanded] = useState(true);
   const [advancing, setAdvancing] = useState(false);
   const doneCriteria = data.criteria.filter(c => c.done).length;
@@ -329,11 +371,15 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
   const phaseDays = data.days_required === null
     ? data.phase_days
     : Math.min(data.phase_days, data.days_required);
-  const requirementParts = ['完成阶段对话'];
-  if (hasTaskRequirement) requirementParts.push('阶段任务');
+  const requirementParts = [t('phaseRequirementConversation')];
+  if (hasTaskRequirement) requirementParts.push(t('phaseRequirementTasks'));
   const requirementText = data.days_required === null
-    ? `${requirementParts.join('、')}后，可进入下一阶段`
-    : `${requirementParts.join('、')}，并经过 ${phaseDays}/${data.days_required} 天后，可进入下一阶段`;
+    ? language === 'en'
+      ? `${requirementParts.join(' and ')} ${t('phaseRequirementNoDays')}`
+      : `${requirementParts.join('、')}${t('phaseRequirementNoDays')}`
+    : language === 'en'
+      ? `${requirementParts.join(' and ')}, plus ${phaseDays}/${data.days_required} days, before moving to the next phase`
+      : `${requirementParts.join('、')}，并经过 ${phaseDays}/${data.days_required} 天后，可进入下一阶段`;
 
   const handleAdvance = async () => {
     setAdvancing(true);
@@ -349,7 +395,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
         className="flex-row items-center px-5 pt-4 pb-3 gap-2"
       >
         <View className="w-2 h-2 rounded-full bg-orange-400" />
-        <Text className="flex-1 text-xs font-semibold text-orange-500">{data.phase_label}</Text>
+        <Text className="flex-1 text-xs font-semibold text-orange-500">{phaseLabel(data.phase, data.review_cycle_count, language) ?? data.phase_label}</Text>
         {totalCriteria > 0 && (
           <Text className="text-xs text-gray-400 mr-1">{doneCriteria}/{totalCriteria}</Text>
         )}
@@ -360,19 +406,19 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
         <View className="px-4 pb-4 gap-3">
           {/* 本阶段会话 */}
           <View className="bg-orange-50 rounded-xl border border-orange-100 px-4 py-3">
-            <Text className="text-[11px] font-semibold text-orange-400 mb-1">本阶段会话</Text>
+            <Text className="text-[11px] font-semibold text-orange-400 mb-1">{t('phaseConversation')}</Text>
             <Text className="text-xs text-gray-500 leading-relaxed mb-3">
-              {PHASE_CONVERSATION[data.phase]}
+              {(language === 'en' ? PHASE_CONVERSATION_EN : PHASE_CONVERSATION)[data.phase]}
             </Text>
             {data.phase_session_done ? (
-              <Text className="text-xs text-green-500 font-medium">✓ 已完成</Text>
+              <Text className="text-xs text-green-500 font-medium">✓ {t('completed')}</Text>
             ) : (
               <TouchableOpacity
                 onPress={onStartSession}
                 activeOpacity={0.85}
                 className="py-2.5 bg-orange-500 rounded-xl items-center"
               >
-                <Text className="text-white text-xs font-semibold">开始本阶段对话 →</Text>
+                <Text className="text-white text-xs font-semibold">{t('startPhaseChat')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -380,7 +426,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
           {/* 本阶段任务 */}
           {data.criteria.length > 0 && (
             <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3">
-              <Text className="text-[11px] font-semibold text-gray-400 mb-2">本阶段任务</Text>
+              <Text className="text-[11px] font-semibold text-gray-400 mb-2">{t('phaseTasks')}</Text>
               <View className="gap-2">
                 {data.criteria.map(c => (
                   <View key={c.key} className="flex-row items-center gap-2">
@@ -388,7 +434,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
                       {c.done && <Text className="text-white text-[9px] font-bold">✓</Text>}
                     </View>
                     <Text className={`text-xs flex-1 ${c.done ? 'text-gray-400 line-through' : 'text-gray-600'}`}>
-                      {c.label}
+                      {criterionLabel(c, language)}
                     </Text>
                     {c.target !== undefined && c.target > 1 && (
                       <Text className="text-xs text-gray-400">{c.current}/{c.target}</Text>
@@ -410,7 +456,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
                   className="py-2.5 bg-indigo-500 rounded-xl items-center"
                 >
                   <Text className="text-white text-xs font-semibold">
-                    {advancing ? '处理中...' : '立即进入下一阶段 →'}
+                    {advancing ? t('processing') : t('advancePhase')}
                   </Text>
                 </TouchableOpacity>
               ) : (
@@ -426,6 +472,7 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
 
 // ── Crisis modal ──────────────────────────────────────────────────────────────
 function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { language, t } = useLanguage();
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View className="flex-1 bg-black/50 justify-center px-4">
@@ -433,16 +480,20 @@ function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           <View className="w-14 h-14 mx-auto mb-5 rounded-full bg-red-100 items-center justify-center">
             <Text className="text-2xl">⚠️</Text>
           </View>
-          <Text className="text-xl font-bold text-red-800 text-center mb-3">我们很关心你的安全</Text>
-          {[['全国心理援助热线', '400-161-9995'], ['北京心理危机干预中心', '010-82951332'], ['生命热线', '400-821-1215']].map(([label, num]) => (
+          <Text className="text-xl font-bold text-red-800 text-center mb-3">{t('crisisTitle')}</Text>
+          {[
+            [language === 'en' ? 'National mental health support hotline' : '全国心理援助热线', '400-161-9995'],
+            [language === 'en' ? 'Beijing crisis intervention center' : '北京心理危机干预中心', '010-82951332'],
+            [language === 'en' ? 'Lifeline' : '生命热线', '400-821-1215'],
+          ].map(([label, num]) => (
             <View key={num} className="px-4 py-3 bg-white rounded-2xl flex-row justify-between items-center mb-2">
               <Text className="text-sm text-gray-500">{label}</Text>
               <Text className="font-bold text-red-600">{num}</Text>
             </View>
           ))}
-          <Text className="text-sm text-red-700 text-center my-4">如正处于危险中，请立即拨打 120</Text>
+          <Text className="text-sm text-red-700 text-center my-4">{t('crisisEmergency')}</Text>
           <TouchableOpacity onPress={onClose} className="w-full py-3 rounded-full bg-red-500 items-center">
-            <Text className="text-white font-medium">我知道了</Text>
+            <Text className="text-white font-medium">{t('crisisAcknowledge')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -451,15 +502,14 @@ function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => vo
 }
 
 // ── Home ──────────────────────────────────────────────────────────────────────
-const DEFAULT_MSG = '今天过得怎么样？随时可以和我聊聊～';
-
 export default function HomeScreen() {
   const router = useRouter();
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [recordVisible, setRecordVisible] = useState(false);
   const [planVisible, setPlanVisible] = useState(false);
   const [crisisVisible, setCrisisVisible] = useState(false);
-  const [feedback, setFeedback] = useState(DEFAULT_MSG);
+  const [feedback, setFeedback] = useState(t('defaultFeedback'));
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -469,22 +519,26 @@ export default function HomeScreen() {
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
+  useEffect(() => {
+    setFeedback(t('defaultFeedback'));
+  }, [language, t]);
+
   const handleRecordSubmitted = (recordId: string) => {
-    setFeedback('小暖正在思考...');
+    setFeedback(t('xiaonuanThinking'));
     let attempts = 0;
     const poll = async () => {
       try {
         const rec = await api.getRecord(recordId);
-        if (rec.risk_level === 'crisis') { setFeedback(DEFAULT_MSG); setCrisisVisible(true); return; }
+        if (rec.risk_level === 'crisis') { setFeedback(t('defaultFeedback')); setCrisisVisible(true); return; }
         if (rec.ai_immediate_feedback) {
           setFeedback(rec.ai_immediate_feedback);
-          pollRef.current = setTimeout(() => setFeedback(DEFAULT_MSG), 600_000);
+          pollRef.current = setTimeout(() => setFeedback(t('defaultFeedback')), 600_000);
           return;
         }
       } catch { /* keep polling */ }
       attempts++;
       if (attempts < 30) pollRef.current = setTimeout(poll, 2000);
-      else setFeedback('记录成功！继续保持对自己的关注～');
+      else setFeedback(t('recordSavedFallback'));
     };
     pollRef.current = setTimeout(poll, 1500);
   };
@@ -498,12 +552,12 @@ export default function HomeScreen() {
       >
         {/* Greeting */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-          <Text className="text-2xl font-bold text-gray-800">{getGreeting()}</Text>
+          <Text className="text-2xl font-bold text-gray-800">{getGreeting(t)}</Text>
           <TouchableOpacity onPress={() => router.push('/profile')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={{ fontSize: 24 }}>👤</Text>
           </TouchableOpacity>
         </View>
-        <Text className="text-sm text-gray-500 mt-1 mb-8">{getDateString()}</Text>
+        <Text className="text-sm text-gray-500 mt-1 mb-8">{getDateString(language)}</Text>
 
         {/* Speech bubble */}
         <View className="bg-white rounded-2xl shadow-sm px-5 py-4 w-full mb-0">
@@ -530,7 +584,7 @@ export default function HomeScreen() {
             >
               <Text className="text-white text-2xl">✏️</Text>
             </TouchableOpacity>
-            <Text className="text-xs text-gray-500 mt-2">记录活动</Text>
+            <Text className="text-xs text-gray-500 mt-2">{t('recordActivity')}</Text>
           </View>
           <View className="items-center">
             <TouchableOpacity
@@ -539,7 +593,7 @@ export default function HomeScreen() {
             >
               <Text className="text-white text-2xl">📅</Text>
             </TouchableOpacity>
-            <Text className="text-xs text-gray-500 mt-2">计划活动</Text>
+            <Text className="text-xs text-gray-500 mt-2">{t('planActivity')}</Text>
           </View>
         </View>
 

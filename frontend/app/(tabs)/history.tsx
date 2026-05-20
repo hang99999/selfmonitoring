@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Polyline, Circle, Line, Text as SvgText, Polygon, G, Rect } from 'react-native-svg';
 import { api } from '../../src/api';
+import { AppLanguage, translateDomainName, useLanguage } from '../../src/i18n';
 import { useUserId } from '../../src/userStore';
 import type { DayStats, WeekStats, MonthStats, DomainRadarItem, MoodRecord, PlannedActivity } from '../../src/types';
 
@@ -19,6 +20,13 @@ interface Scale {
   maxScore: number;
   displayScore: (raw: number) => number;
   interpret: (raw: number) => Interpretation;
+  en: {
+    subtitle: string;
+    timeframe: string;
+    questions: string[];
+    options: string[];
+    interpret: (raw: number) => Interpretation;
+  };
 }
 
 const SCALES: Scale[] = [
@@ -44,6 +52,29 @@ const SCALES: Scale[] = [
       if (s <= 19) return { level: '中重度抑郁症状', severity: 'red', desc: '存在较明显的抑郁相关症状，日常生活可能受到明显影响，建议尽快获得人工支持。', advice: ['请尽快联系 App 研究团队或专业心理健康服务', '不要独自承受，告诉身边信任的人', '如果有立即伤害自己的风险，请联系当地急救或前往急诊'] };
       return { level: '重度抑郁症状', severity: 'red', desc: '存在严重抑郁相关症状，建议立即寻求人工支持和专业帮助。', advice: ['请立即联系 App 研究团队，并尽快联系精神科医生或前往医院', '请让身边的人陪伴你，不要独处', '如果处于立即危险中，请联系当地急救或前往最近急诊'] };
     },
+    en: {
+      subtitle: 'Depression screening scale',
+      timeframe: 'Over the last 2 weeks, how often have you been bothered by any of the following problems?',
+      questions: [
+        'Little interest or pleasure in doing things',
+        'Feeling down, depressed, or hopeless',
+        'Trouble falling or staying asleep, or sleeping too much',
+        'Feeling tired or having little energy',
+        'Poor appetite or overeating',
+        'Feeling bad about yourself — or that you are a failure or have let yourself or your family down',
+        'Trouble concentrating on things, such as reading the newspaper or watching television',
+        'Moving or speaking so slowly that other people could have noticed? Or the opposite — being so fidgety or restless that you have been moving around a lot more than usual',
+        'Thoughts that you would be better off dead or of hurting yourself in some way',
+      ],
+      options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day'],
+      interpret: (s) => {
+        if (s <= 4) return { level: 'None-minimal depression symptoms', severity: 'green', desc: 'Your score is in the none-minimal range. Keep maintaining healthy routines and meaningful activities.', advice: ['Maintain regular sleep and activity routines', 'Stay connected with supportive people', 'Keep noticing changes in your mood'] };
+        if (s <= 9) return { level: 'Mild depression symptoms', severity: 'yellow', desc: 'Your score is in the mild range. Daily action and support resources may help improve your current state.', advice: ['Add activities that bring pleasure or meaning', 'Try regular movement, even in small amounts', 'Talk with someone you trust'] };
+        if (s <= 14) return { level: 'Moderate depression symptoms', severity: 'orange', desc: 'Your score is in the moderate range. Consider seeking additional support.', advice: ['Contact the app research team about your result and recent state', 'Tell a trusted person how you are doing', 'Consider consulting a mental-health professional'] };
+        if (s <= 19) return { level: 'Moderately severe depression symptoms', severity: 'red', desc: 'Your score suggests more significant symptoms. Please seek human support soon.', advice: ['Contact the app research team or a mental-health service', 'Do not carry this alone; tell someone you trust', 'If you may hurt yourself soon, contact emergency services or go to an emergency department'] };
+        return { level: 'Severe depression symptoms', severity: 'red', desc: 'Your score is in the severe range. Please seek human and professional support as soon as possible.', advice: ['Contact the app research team and consider urgent professional help', 'Ask someone nearby to stay with you', 'If you are in immediate danger, contact emergency services or go to the nearest emergency department'] };
+      },
+    },
   },
   {
     id: 'GAD7', name: 'GAD-7', subtitle: '焦虑筛查量表', emoji: '🌀',
@@ -61,6 +92,26 @@ const SCALES: Scale[] = [
       if (s <= 9) return { level: '轻微焦虑症状', severity: 'yellow', desc: '存在轻微焦虑相关症状，可以先通过一些日常方法缓解。', advice: ['尝试腹式呼吸或渐进式肌肉放松', '减少咖啡因和碎片化刷手机的习惯', '把担忧写下来，区分可控与不可控的事'] };
       if (s <= 14) return { level: '中度焦虑症状', severity: 'orange', desc: '存在中度焦虑相关症状，建议积极寻求人工支持。', advice: ['建议联系 App 研究团队，说明你的测评结果和近期困扰', '认知行为疗法（CBT）对焦虑有良好效果，可考虑专业咨询', '与家人或朋友分享你的感受'] };
       return { level: '重度焦虑症状', severity: 'red', desc: '存在明显焦虑相关症状，建议尽快获得人工支持和专业帮助。', advice: ['请尽快联系 App 研究团队或专业心理健康服务', '告诉身边信任的人你的状态', '焦虑症状是可以被支持和改善的，请不要独自承受'] };
+    },
+    en: {
+      subtitle: 'Anxiety screening scale',
+      timeframe: 'Over the last 2 weeks, how often have you been bothered by the following problems?',
+      questions: [
+        'Feeling nervous, anxious or on edge',
+        'Not being able to stop or control worrying',
+        'Worrying too much about different things',
+        'Trouble relaxing',
+        'Being so restless that it is hard to sit still',
+        'Becoming easily annoyed or irritable',
+        'Feeling afraid as if something awful might happen',
+      ],
+      options: ['Not at all', 'Several days', 'More than half the days', 'Nearly every day'],
+      interpret: (s) => {
+        if (s <= 4) return { level: 'Minimal anxiety symptoms', severity: 'green', desc: 'Your score is in the minimal range. Keep maintaining relaxation and self-care habits.', advice: ['Keep using helpful relaxation habits', 'Mindfulness or breathing practice may help over time', 'Stay connected with meaningful activities'] };
+        if (s <= 9) return { level: 'Mild anxiety symptoms', severity: 'yellow', desc: 'Your score is in the mild range. Some daily strategies may help reduce anxiety.', advice: ['Try slow breathing or progressive muscle relaxation', 'Reduce caffeine and fragmented phone use if helpful', 'Write worries down and separate controllable from uncontrollable concerns'] };
+        if (s <= 14) return { level: 'Moderate anxiety symptoms', severity: 'orange', desc: 'Your score is in the moderate range. Consider seeking human support.', advice: ['Contact the app research team about your result and recent worries', 'CBT can be helpful for anxiety; consider professional consultation', 'Share your feelings with family or friends'] };
+        return { level: 'Severe anxiety symptoms', severity: 'red', desc: 'Your score suggests significant anxiety symptoms. Please seek support soon.', advice: ['Contact the app research team or a mental-health service', 'Tell someone you trust how you are doing', 'Anxiety can be supported and improved; you do not have to handle it alone'] };
+      },
     },
   },
   {
@@ -80,8 +131,45 @@ const SCALES: Scale[] = [
       if (pct > 28) return { level: '幸福感偏低', severity: 'orange', desc: `幸福感指数 ${pct}/100，提示近期幸福感偏低，建议进一步关注当前情绪状态。`, advice: ['进行行为激活，计划并执行有意义的活动', '建议联系 App 研究团队，说明你的测评结果和近期状态'] };
       return { level: '幸福感明显偏低', severity: 'red', desc: `幸福感指数 ${pct}/100，提示近期幸福感明显偏低，建议尽快获得人工支持。`, advice: ['请联系 App 研究团队或专业心理健康服务', '如果同时有强烈绝望感或伤害自己的念头，请联系当地急救或前往急诊'] };
     },
+    en: {
+      subtitle: 'Well-being index',
+      timeframe: 'Please indicate for each of the five statements which is closest to how you have been feeling over the last two weeks.',
+      questions: [
+        'I have felt cheerful and in good spirits',
+        'I have felt calm and relaxed',
+        'I have felt active and vigorous',
+        'I woke up feeling fresh and rested',
+        'My daily life has been filled with things that interest me',
+      ],
+      options: ['At no time', 'Some of the time', 'Less than half of the time', 'More than half of the time', 'Most of the time', 'All of the time'],
+      interpret: (s) => {
+        const pct = s * 4;
+        if (pct >= 68) return { level: 'Good well-being', severity: 'green', desc: `WHO-5 score ${pct}/100. Your recent well-being appears relatively positive.`, advice: ['Keep maintaining activities and relationships that support well-being', 'Share helpful routines and experiences with people around you'] };
+        if (pct >= 50) return { level: 'Fair well-being', severity: 'yellow', desc: `WHO-5 score ${pct}/100. Overall well-being is fair, with some room for care and improvement.`, advice: ['Try adding small daily moments that feel pleasant', 'Pay attention to sleep quality and regular routines'] };
+        if (pct > 28) return { level: 'Low well-being', severity: 'orange', desc: `WHO-5 score ${pct}/100. This suggests lower recent well-being and is worth further attention.`, advice: ['Use behavioral activation: plan and carry out meaningful activities', 'Consider contacting the app research team about your result and recent state'] };
+        return { level: 'Very low well-being', severity: 'red', desc: `WHO-5 score ${pct}/100. This suggests very low recent well-being. Please seek human support soon.`, advice: ['Contact the app research team or a mental-health service', 'If you also feel hopeless or may hurt yourself, contact emergency services or go to an emergency department'] };
+      },
+    },
   },
 ];
+
+function scaleText(scale: Scale, language: AppLanguage) {
+  return language === 'en'
+    ? {
+        subtitle: scale.en.subtitle,
+        timeframe: scale.en.timeframe,
+        questions: scale.en.questions,
+        options: scale.en.options,
+        interpret: scale.en.interpret,
+      }
+    : {
+        subtitle: scale.subtitle,
+        timeframe: scale.timeframe,
+        questions: scale.questions,
+        options: scale.options,
+        interpret: scale.interpret,
+      };
+}
 
 const SEVERITY_COLOR: Record<Severity, { bg: string; text: string; border: string }> = {
   green:  { bg: '#f0fdf4', text: '#15803d', border: '#86efac' },
@@ -99,16 +187,18 @@ type AStep =
 
 function AssessmentPanel() {
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [step, setStep] = useState<AStep>({ type: 'list' });
 
   const start = (scale: Scale) => setStep({ type: 'taking', scale, answers: [], current: 0 });
 
   const handleAnswer = (value: number) => {
     if (step.type !== 'taking') return;
+    const localized = scaleText(step.scale, language);
     const newAnswers = [...step.answers, value];
-    if (newAnswers.length === step.scale.questions.length) {
+    if (newAnswers.length === localized.questions.length) {
       const score = newAnswers.reduce((a, b) => a + b, 0);
-      const interp = step.scale.interpret(score);
+      const interp = localized.interpret(score);
       api.saveAssessmentResult({
         user_id: userId,
         scale_type: step.scale.id,
@@ -126,29 +216,29 @@ function AssessmentPanel() {
   if (step.type === 'list') {
     return (
       <View>
-        <Text className="text-sm text-gray-500 mb-4 leading-relaxed">
-          以下量表来自国际通用的心理健康筛查工具，每次约需 2-3 分钟。
-          测评结果<Text className="font-semibold">仅供参考</Text>，不能替代专业诊断。
-        </Text>
-        {SCALES.map(scale => (
-          <TouchableOpacity
-            key={scale.id}
-            onPress={() => start(scale)}
-            className="w-full rounded-2xl p-4 mb-3 flex-row items-center"
-            style={cardStyle}
-          >
-            <Text className="text-3xl mr-3">{scale.emoji}</Text>
-            <View className="flex-1">
-              <Text className="font-bold text-gray-800">{scale.name}</Text>
-              <Text className="text-sm text-gray-500">{scale.subtitle}</Text>
-            </View>
-            <View className="bg-gray-100 px-2 py-1 rounded-lg">
-              <Text className="text-xs text-gray-500">{scale.questions.length} 题</Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+        <Text className="text-sm text-gray-500 mb-4 leading-relaxed">{t('assessmentsIntro')}</Text>
+        {SCALES.map(scale => {
+          const localized = scaleText(scale, language);
+          return (
+            <TouchableOpacity
+              key={scale.id}
+              onPress={() => start(scale)}
+              className="w-full rounded-2xl p-4 mb-3 flex-row items-center"
+              style={cardStyle}
+            >
+              <Text className="text-3xl mr-3">{scale.emoji}</Text>
+              <View className="flex-1">
+                <Text className="font-bold text-gray-800">{scale.name}</Text>
+                <Text className="text-sm text-gray-500">{localized.subtitle}</Text>
+              </View>
+              <View className="bg-gray-100 px-2 py-1 rounded-lg">
+                <Text className="text-xs text-gray-500">{localized.questions.length} {t('questionsCount')}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
         <Text className="text-xs text-gray-400 text-center mt-2">
-          如有心理困扰，可以联系 App 研究团队获得进一步支持
+          {t('assessmentSupportHint')}
         </Text>
       </View>
     );
@@ -156,17 +246,22 @@ function AssessmentPanel() {
 
   if (step.type === 'taking') {
     const { scale, current } = step;
-    const progress = Math.round((current / scale.questions.length) * 100);
+    const localized = scaleText(scale, language);
+    const progress = Math.round((current / localized.questions.length) * 100);
     return (
       <View>
         <View className="flex-row items-center mb-5">
           <TouchableOpacity onPress={() => setStep({ type: 'list' })} className="mr-3">
-            <Text className="text-gray-400 text-sm">← 返回</Text>
+            <Text className="text-gray-400 text-sm">{t('assessmentBack')}</Text>
           </TouchableOpacity>
           <View className="flex-1">
             <View className="flex-row justify-between mb-1">
               <Text className="text-xs text-gray-400">{scale.name}</Text>
-              <Text className="text-xs text-gray-400">第 {current + 1} / {scale.questions.length} 题</Text>
+              <Text className="text-xs text-gray-400">
+                {t('assessmentQuestionProgress')
+                  .replace('{current}', String(current + 1))
+                  .replace('{total}', String(localized.questions.length))}
+              </Text>
             </View>
             <View className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <View className="h-1.5 bg-orange-400 rounded-full" style={{ width: `${progress}%` }} />
@@ -174,19 +269,19 @@ function AssessmentPanel() {
           </View>
         </View>
 
-        <Text className="text-xs text-gray-400 mb-2">{scale.timeframe}</Text>
+        <Text className="text-xs text-gray-400 mb-2">{localized.timeframe}</Text>
         <Text className="text-base font-bold text-gray-800 mb-5 leading-snug">
-          {scale.questions[current]}
+          {localized.questions[current]}
         </Text>
 
-        {scale.options.map((opt, i) => (
+        {localized.options.map((opt, i) => (
           <TouchableOpacity
             key={i}
             onPress={() => handleAnswer(i)}
             className="w-full flex-row items-center px-4 py-3.5 rounded-xl border border-gray-200 bg-white mb-2"
           >
             <View className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3" />
-            <Text className="text-sm text-gray-700">{opt}</Text>
+            <Text className="text-sm text-gray-700 flex-1">{opt}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -195,8 +290,9 @@ function AssessmentPanel() {
 
   if (step.type === 'result') {
     const { scale, score, answers } = step;
+    const localized = scaleText(scale, language);
     const displayScore = scale.displayScore(score);
-    const interp = scale.interpret(score);
+    const interp = localized.interpret(score);
     const style = SEVERITY_COLOR[interp.severity];
     const maxDisplay = scale.id === 'WHO5' ? 100 : scale.maxScore;
     const hasSelfHarmNote = scale.id === 'PHQ9' && answers[8] > 0;
@@ -204,7 +300,7 @@ function AssessmentPanel() {
     return (
       <View>
         <TouchableOpacity onPress={() => setStep({ type: 'list' })} className="mb-5">
-          <Text className="text-gray-400 text-sm">← 返回列表</Text>
+          <Text className="text-gray-400 text-sm">{t('assessmentBackToList')}</Text>
         </TouchableOpacity>
 
         <View className="items-center mb-5">
@@ -215,7 +311,7 @@ function AssessmentPanel() {
             <Text style={{ color: style.text }} className="text-4xl font-bold">{displayScore}</Text>
             <Text style={{ color: style.text }} className="text-xs opacity-75">/ {maxDisplay}</Text>
           </View>
-          <Text className="text-xs text-gray-400 mb-2">{scale.name} {scale.subtitle}</Text>
+          <Text className="text-xs text-gray-400 mb-2">{scale.name} {localized.subtitle}</Text>
           <View style={{ backgroundColor: style.bg }} className="px-4 py-1.5 rounded-full">
             <Text style={{ color: style.text }} className="font-semibold text-sm">{interp.level}</Text>
           </View>
@@ -224,10 +320,10 @@ function AssessmentPanel() {
         <Text className="text-sm text-gray-600 leading-relaxed mb-4 text-center">{interp.desc}</Text>
 
         <View className="bg-gray-50 rounded-2xl p-4 mb-4">
-          <Text className="text-sm font-semibold text-gray-700 mb-2">建议</Text>
+          <Text className="text-sm font-semibold text-gray-700 mb-2">{t('assessmentAdvice')}</Text>
           {interp.advice.map((a, i) => (
             <View key={i} className="flex-row mb-1.5">
-              <Text className="text-orange-400 font-bold mr-2">•</Text>
+              <Text className="text-orange-400 font-bold mr-2">-</Text>
               <Text className="text-sm text-gray-600 flex-1 leading-relaxed">{a}</Text>
             </View>
           ))}
@@ -235,24 +331,24 @@ function AssessmentPanel() {
 
         {hasSelfHarmNote && (
           <View className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4">
-            <Text className="text-sm font-bold text-red-700 mb-1">❤️ 重要：请寻求帮助</Text>
-            <Text className="text-sm text-red-600 mb-2">你提到了有伤害自己的念头，请尽快让真实的人知道你的处境：</Text>
-            <Text className="text-sm font-medium text-red-700">• 联系 App 研究团队，说明你现在的风险和测评结果</Text>
-            <Text className="text-sm font-medium text-red-700">• 告诉身边可信任的人，请对方陪伴你</Text>
-            <Text className="text-sm font-medium text-red-700">• 如果你可能马上伤害自己，请联系当地急救或前往最近急诊</Text>
+            <Text className="text-sm font-bold text-red-700 mb-1">{t('assessmentImportantHelpTitle')}</Text>
+            <Text className="text-sm text-red-600 mb-2">{t('assessmentSelfHarmIntro')}</Text>
+            <Text className="text-sm font-medium text-red-700">- {t('assessmentSelfHarmTeam')}</Text>
+            <Text className="text-sm font-medium text-red-700">- {t('assessmentSelfHarmTrusted')}</Text>
+            <Text className="text-sm font-medium text-red-700">- {t('assessmentSelfHarmEmergency')}</Text>
           </View>
         )}
 
         <Text className="text-xs text-gray-400 text-center mb-5">
-          本测评仅供参考，不能替代专业诊断。如有困扰请咨询专业人士。
+          {t('assessmentDisclaimer')}
         </Text>
 
         <View className="flex-row gap-3">
           <TouchableOpacity onPress={() => start(scale)} className="flex-1 py-3 bg-gray-100 rounded-2xl items-center">
-            <Text className="text-gray-700 font-medium text-sm">重新测评</Text>
+            <Text className="text-gray-700 font-medium text-sm">{t('retakeAssessment')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setStep({ type: 'list' })} className="flex-1 py-3 bg-orange-500 rounded-2xl items-center">
-            <Text className="text-white font-medium text-sm">其他测评</Text>
+            <Text className="text-white font-medium text-sm">{t('otherAssessments')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -298,6 +394,7 @@ function getCurrentMonthRange() {
 interface ChartPoint { label: string; pleasure?: number | null; importance?: number | null; mood?: number | null; }
 
 function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: number }) {
+  const { t } = useLanguage();
   const { width } = useWindowDimensions();
   const chartW = width - 64;
   const chartH = 170;
@@ -355,11 +452,11 @@ function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: nu
       <View className="flex-row gap-4 justify-center mt-1 mb-1">
         <View className="flex-row items-center gap-1.5">
           <View style={{ width: 12, height: 2, backgroundColor: '#fb923c', borderRadius: 1 }} />
-          <Text className="text-xs text-gray-400">愉悦感</Text>
+          <Text className="text-xs text-gray-400">{t('pleasureAxis')}</Text>
         </View>
         <View className="flex-row items-center gap-1.5">
           <View style={{ width: 12, height: 2, backgroundColor: '#818cf8', borderRadius: 1 }} />
-          <Text className="text-xs text-gray-400">重要性</Text>
+          <Text className="text-xs text-gray-400">{t('importanceAxis')}</Text>
         </View>
       </View>
     </View>
@@ -367,6 +464,7 @@ function LineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: nu
 }
 
 function MoodLineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?: number }) {
+  const { t } = useLanguage();
   const { width } = useWindowDimensions();
   const chartW = width - 64;
   const chartH = 170;
@@ -409,7 +507,7 @@ function MoodLineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?
           p.mood != null ? <Circle key={i} cx={xOf(i)} cy={yOf(p.mood)} r={3.5} fill="#f97316" /> : null
         ))}
       </Svg>
-      <Text className="text-xs text-gray-400 text-center mt-1">每日总体情绪评分</Text>
+      <Text className="text-xs text-gray-400 text-center mt-1">{t('dailyMoodChartLabel')}</Text>
     </View>
   );
 }
@@ -417,6 +515,7 @@ function MoodLineChart({ data, showEvery = 1 }: { data: ChartPoint[]; showEvery?
 function DailyMoodCard({
   value, saving, onSelect,
 }: { value: number | null; saving: boolean; onSelect: (score: number) => void }) {
+  const { t } = useLanguage();
   const [trackWidth, setTrackWidth] = useState(1);
   const [draftScore, setDraftScore] = useState(value ?? 5);
 
@@ -447,10 +546,10 @@ function DailyMoodCard({
   return (
     <View className="bg-white rounded-2xl p-4 mb-4">
       <View className="flex-row items-center justify-between mb-2">
-        <Text className="text-sm font-semibold text-gray-700">今日总体情绪</Text>
-        <Text className="text-sm font-bold text-orange-500">{value != null ? `${draftScore}/10` : `未保存 · ${draftScore}/10`}</Text>
+        <Text className="text-sm font-semibold text-gray-700">{t('todayMoodTitle')}</Text>
+        <Text className="text-sm font-bold text-orange-500">{value != null ? `${draftScore}/10` : `${t('unsavedScore')} · ${draftScore}/10`}</Text>
       </View>
-      <Text className="text-xs text-gray-400 mb-3">0 表示最消极，10 表示最积极</Text>
+      <Text className="text-xs text-gray-400 mb-3">{t('moodScaleHint')}</Text>
       <View
         className="py-3"
         onLayout={event => setTrackWidth(Math.max(1, event.nativeEvent.layout.width))}
@@ -471,7 +570,7 @@ function DailyMoodCard({
           ))}
         </View>
       </View>
-      {saving && <Text className="text-xs text-gray-400 mt-2">保存中...</Text>}
+      {saving && <Text className="text-xs text-gray-400 mt-2">{t('saving')}</Text>}
     </View>
   );
 }
@@ -491,18 +590,19 @@ function PlanListSection({
   plannedActivities: PlannedActivity[];
   completedPlansWithoutPoint?: PlannedActivity[];
 }) {
+  const { t } = useLanguage();
   if (plannedActivities.length === 0) return null;
   const incompletePlans = plannedActivities.filter(p => !p.completed);
 
   return (
     <View className="border-t border-gray-100 pt-3 mt-1">
-      <Text className="text-xs font-semibold text-gray-500 mb-2">计划活动</Text>
+      <Text className="text-xs font-semibold text-gray-500 mb-2">{t('plannedActivitiesSection')}</Text>
       <View className="flex-row flex-wrap gap-2 mb-2">
         <View className="px-2 py-1 rounded-lg bg-green-50">
-          <Text className="text-xs text-green-700">已完成 {plannedActivities.filter(p => p.completed).length}</Text>
+          <Text className="text-xs text-green-700">{t('completedCount').replace('{count}', String(plannedActivities.filter(p => p.completed).length))}</Text>
         </View>
         <View className="px-2 py-1 rounded-lg bg-gray-50">
-          <Text className="text-xs text-gray-500">未完成 {incompletePlans.length}</Text>
+          <Text className="text-xs text-gray-500">{t('incompleteCount').replace('{count}', String(incompletePlans.length))}</Text>
         </View>
       </View>
       {incompletePlans.length > 0 ? incompletePlans.map(plan => (
@@ -511,11 +611,11 @@ function PlanListSection({
           <Text className="text-xs text-gray-400">{plan.scheduled_date}</Text>
         </View>
       )) : (
-        <Text className="text-xs text-gray-300 mb-1.5">当前范围没有未完成的计划</Text>
+        <Text className="text-xs text-gray-300 mb-1.5">{t('noIncompletePlans')}</Text>
       )}
       {completedPlansWithoutPoint.length > 0 && (
         <Text className="text-xs text-gray-400 mt-2">
-          另有 {completedPlansWithoutPoint.length} 个已完成计划没有评分记录，暂时不显示在图上。
+          {t('completedPlansNoScore').replace('{count}', String(completedPlansWithoutPoint.length))}
         </Text>
       )}
     </View>
@@ -528,6 +628,7 @@ function PleasureImportanceScatter({
   records: ScatterRecord[];
   plannedActivities?: PlannedActivity[];
 }) {
+  const { t } = useLanguage();
   const { width } = useWindowDimensions();
   const chartW = width - 64;
   const chartH = 260;
@@ -548,10 +649,10 @@ function PleasureImportanceScatter({
   const yOf = (v: number) => PT + innerH - (clamp(v) / 10) * innerH;
 
   const quadrants = [
-    { key: 'highBoth', label: '高愉悦高重要', color: '#16a34a' },
-    { key: 'pleasantLowImportance', label: '高愉悦低重要', color: '#f97316' },
-    { key: 'lowPleasureImportant', label: '低愉悦高重要', color: '#6366f1' },
-    { key: 'lowBoth', label: '低愉悦低重要', color: '#9ca3af' },
+    { key: 'highBoth', label: t('highPleasureHighImportance'), color: '#16a34a' },
+    { key: 'pleasantLowImportance', label: t('highPleasureLowImportance'), color: '#f97316' },
+    { key: 'lowPleasureImportant', label: t('lowPleasureHighImportance'), color: '#6366f1' },
+    { key: 'lowBoth', label: t('lowPleasureLowImportance'), color: '#9ca3af' },
   ] as const;
 
   const grouped = quadrants.reduce<Record<typeof quadrants[number]['key'], typeof scored>>((acc, q) => {
@@ -572,7 +673,7 @@ function PleasureImportanceScatter({
     return (
       <View>
         <View className="items-center justify-center py-8">
-          <Text className="text-sm text-gray-400">当前范围还没有可绘制的愉悦感和重要性评分</Text>
+          <Text className="text-sm text-gray-400">{t('scatterEmpty')}</Text>
         </View>
         <PlanListSection plannedActivities={plannedActivities} completedPlansWithoutPoint={plannedActivities.filter(p => p.completed)} />
       </View>
@@ -597,13 +698,13 @@ function PleasureImportanceScatter({
           </G>
         ))}
 
-        <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">愉悦感</SvgText>
-        <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>重要性</SvgText>
+        <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">{t('pleasureAxis')}</SvgText>
+        <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>{t('importanceAxis')}</SvgText>
 
-        <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">低愉悦高重要</SvgText>
-        <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">高愉悦高重要</SvgText>
-        <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">低愉悦低重要</SvgText>
-        <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">高愉悦低重要</SvgText>
+        <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">{t('lowPleasureHighImportance')}</SvgText>
+        <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">{t('highPleasureHighImportance')}</SvgText>
+        <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">{t('lowPleasureLowImportance')}</SvgText>
+        <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">{t('highPleasureLowImportance')}</SvgText>
 
         {scored.map(({ record, index }) => {
           const x = xOf(record.pleasure_score ?? 0);
@@ -638,13 +739,13 @@ function PleasureImportanceScatter({
               return (
                 <View key={`${record.timestamp}-legend-${index}`} className="flex-row items-center mb-1.5">
                   <Text className="text-xs font-bold text-orange-500 w-5">{index}</Text>
-                  <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || '活动'}</Text>
-                  {isCompletedPlan && <Text className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded-md mr-1">计划完成</Text>}
-                  <Text className="text-xs text-gray-400 ml-2">愉悦 {record.pleasure_score} · 重要 {record.importance_score}</Text>
+                  <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || t('activityFallback')}</Text>
+                  {isCompletedPlan && <Text className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded-md mr-1">{t('completedPlan')}</Text>}
+                  <Text className="text-xs text-gray-400 ml-2">{t('pleasureShort')} {record.pleasure_score} · {t('importanceShort')} {record.importance_score}</Text>
                 </View>
               );
             }) : (
-              <Text className="text-xs text-gray-300 mb-1.5">暂无活动</Text>
+              <Text className="text-xs text-gray-300 mb-1.5">{t('noActivities')}</Text>
             )}
           </View>
         ))}
@@ -667,7 +768,17 @@ const DOMAIN_SHORT: Record<string, string> = {
   '其他': '其他',
 };
 
+const DOMAIN_SHORT_EN: Record<string, string> = {
+  '亲密关系': 'Close\nrelationships',
+  '教育与职业': 'Education\ncareer',
+  '休闲兴趣': 'Leisure\ninterests',
+  '自我关怀': 'Self\ncare',
+  '日常责任': 'Daily\nresponsibilities',
+  '其他': 'Other',
+};
+
 function RadarChart({ data }: { data: DomainRadarItem[] }) {
+  const { language } = useLanguage();
   const { width } = useWindowDimensions();
   const size = Math.min(width - 64, 260);
   const cx = size / 2;
@@ -741,7 +852,10 @@ function RadarChart({ data }: { data: DomainRadarItem[] }) {
           const ly = py(i, R + 22);
           const cos = Math.cos(angle(i));
           const anchor = cos > 0.3 ? 'start' : cos < -0.3 ? 'end' : 'middle';
-          const lines = (DOMAIN_SHORT[d.domain_name] ?? d.domain_name).split('\n');
+          const label = language === 'en'
+            ? (DOMAIN_SHORT_EN[d.domain_name] ?? translateDomainName(d.domain_name, language))
+            : (DOMAIN_SHORT[d.domain_name] ?? d.domain_name);
+          const lines = label.split('\n');
           const lineH = 11;
           const offsetY = lines.length > 1 ? -(lineH / 2) : 0;
           return lines.map((line, li) => (
@@ -769,6 +883,7 @@ type StatsTab = 'today' | 'week' | 'month';
 
 export default function HistoryScreen() {
   const userId = useUserId();
+  const { t } = useLanguage();
   const [mainTab, setMainTab] = useState<MainTab>('stats');
   const [statsTab, setStatsTab] = useState<StatsTab>('today');
   const [dayStats, setDayStats] = useState<DayStats | null>(null);
@@ -836,17 +951,15 @@ export default function HistoryScreen() {
     }
   };
 
-  const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-
   const mainTabs: { key: MainTab; label: string }[] = [
-    { key: 'stats', label: '📊 数据' },
-    { key: 'assessment', label: '📋 测评' },
+    { key: 'stats', label: t('dataTab') },
+    { key: 'assessment', label: t('assessmentTab') },
   ];
 
   return (
     <SafeAreaView className="flex-1 bg-orange-50">
       <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
-        <Text className="text-xl font-bold text-gray-800 mt-6 mb-4">反思</Text>
+        <Text className="text-xl font-bold text-gray-800 mt-6 mb-4">{t('reflectTitle')}</Text>
 
         {/* Main tab selector */}
         <View className="flex-row bg-gray-100 rounded-2xl p-1 mb-6">
@@ -868,13 +981,17 @@ export default function HistoryScreen() {
         {mainTab === 'stats' && (
           <>
             <View className="flex-row gap-2 mb-5">
-              {([['today', '今日'], ['week', '本周'], ['month', '本月']] as [StatsTab, string][]).map(([t, label]) => (
+              {([
+                ['today', t('statsToday')],
+                ['week', t('statsWeek')],
+                ['month', t('statsMonth')],
+              ] as [StatsTab, string][]).map(([tab, label]) => (
                 <TouchableOpacity
-                  key={t}
-                  onPress={() => setStatsTab(t)}
-                  className={`px-4 py-1.5 rounded-full ${statsTab === t ? 'bg-orange-500' : 'bg-white'}`}
+                  key={tab}
+                  onPress={() => setStatsTab(tab)}
+                  className={`px-4 py-1.5 rounded-full ${statsTab === tab ? 'bg-orange-500' : 'bg-white'}`}
                 >
-                  <Text className={`text-sm font-medium ${statsTab === t ? 'text-white' : 'text-gray-500'}`}>
+                  <Text className={`text-sm font-medium ${statsTab === tab ? 'text-white' : 'text-gray-500'}`}>
                     {label}
                   </Text>
                 </TouchableOpacity>
@@ -887,9 +1004,9 @@ export default function HistoryScreen() {
               <View>
                 <View className="flex-row gap-3 mb-5">
                   {[
-                    { label: '活动条目', value: dayStats.count, unit: '条', color: '#f97316' },
-                    { label: '平均愉悦度', value: dayStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
-                    { label: '平均重要性', value: dayStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
+                    { label: t('activityEntries'), value: dayStats.count, unit: '', color: '#f97316' },
+                    { label: t('avgPleasure'), value: dayStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
+                    { label: t('avgImportance'), value: dayStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
                   ].map(card => (
                     <View key={card.label} className="flex-1 rounded-2xl px-2 py-4 items-center" style={cardStyle}>
                       <Text style={{ color: card.color }} className="text-xl font-bold">
@@ -904,19 +1021,19 @@ export default function HistoryScreen() {
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
                   <View className="flex-row items-center justify-between mb-1">
-                    <Text className="text-sm font-semibold text-gray-700">今日活动分布</Text>
+                    <Text className="text-sm font-semibold text-gray-700">{t('todayActivityDistribution')}</Text>
                     <Text className="text-xs font-semibold text-orange-500">
-                      {todayMoodScore != null ? `总体情绪 ${todayMoodScore}/10` : '总体情绪未评分'}
+                      {todayMoodScore != null ? `${t('overallMood')} ${todayMoodScore}/10` : t('overallMoodUnrated')}
                     </Text>
                   </View>
-                  <Text className="text-xs text-gray-400 mb-3">每个点代表一条活动记录，绿色描边表示已完成的计划活动</Text>
+                  <Text className="text-xs text-gray-400 mb-3">{t('chartHint')} {t('completedPlanOutlineHint')}</Text>
                   <PleasureImportanceScatter records={dayStats.records} plannedActivities={plannedActivities} />
                 </View>
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
-                    <Text className="text-xs text-gray-400 mb-3">今日活动覆盖的领域</Text>
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">{t('lifeDomainDistribution')}</Text>
+                    <Text className="text-xs text-gray-400 mb-3">{t('todayDomainsCovered')}</Text>
                     <RadarChart data={radarData} />
                   </View>
                 )}
@@ -927,9 +1044,9 @@ export default function HistoryScreen() {
               <View>
                 <View className="flex-row gap-3 mb-5">
                   {[
-                    { label: '本周记录', value: weekStats.total_count, unit: '条', color: '#f97316' },
-                    { label: '平均愉悦度', value: weekStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
-                    { label: '平均重要性', value: weekStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
+                    { label: t('weekRecords'), value: weekStats.total_count, unit: '', color: '#f97316' },
+                    { label: t('avgPleasure'), value: weekStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
+                    { label: t('avgImportance'), value: weekStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
                   ].map(card => (
                     <View key={card.label} className="flex-1 rounded-2xl px-2 py-4 items-center" style={cardStyle}>
                       <Text style={{ color: card.color }} className="text-xl font-bold">
@@ -941,17 +1058,17 @@ export default function HistoryScreen() {
                 </View>
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-1">本周活动分布</Text>
+                  <Text className="text-sm font-semibold text-gray-700 mb-1">{t('weekActivityDistribution')}</Text>
                   <Text className="text-xs text-gray-400 mb-3">
-                    你可以增加愉悦且重要的活动，并平衡高愉悦低重要和低愉悦高重要的活动，减少低愉悦低重要的活动。
+                    {t('weekBaHint')}
                   </Text>
                   <PleasureImportanceScatter records={weekRecords} plannedActivities={plannedActivities} />
                 </View>
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
-                    <Text className="text-xs text-gray-400 mb-3">本周活动覆盖的领域 · BATD-R 建议多领域均衡</Text>
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">{t('lifeDomainDistribution')}</Text>
+                    <Text className="text-xs text-gray-400 mb-3">{t('weekDomainsCovered')}</Text>
                     <RadarChart data={radarData} />
                   </View>
                 )}
@@ -962,9 +1079,9 @@ export default function HistoryScreen() {
               <View>
                 <View className="flex-row gap-3 mb-5">
                   {[
-                    { label: '本月记录', value: monthStats.total_count, unit: '条', color: '#f97316' },
-                    { label: '平均愉悦度', value: monthStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
-                    { label: '平均重要性', value: monthStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
+                    { label: t('monthRecords'), value: monthStats.total_count, unit: '', color: '#f97316' },
+                    { label: t('avgPleasure'), value: monthStats.avg_pleasure?.toFixed(1) ?? '—', unit: '/10', color: '#6366f1' },
+                    { label: t('avgImportance'), value: monthStats.avg_importance?.toFixed(1) ?? '—', unit: '/10', color: '#22c55e' },
                   ].map(card => (
                     <View key={card.label} className="flex-1 rounded-2xl px-2 py-4 items-center" style={cardStyle}>
                       <Text style={{ color: card.color }} className="text-xl font-bold">
@@ -976,8 +1093,8 @@ export default function HistoryScreen() {
                 </View>
 
                 <View className="bg-white rounded-2xl p-4 mb-4">
-                  <Text className="text-sm font-semibold text-gray-700 mb-1">本月总体情绪趋势</Text>
-                  <Text className="text-xs text-gray-400 mb-3">基于每天填写的 0-10 总体情绪评分</Text>
+                  <Text className="text-sm font-semibold text-gray-700 mb-1">{t('monthlyMoodTrend')}</Text>
+                  <Text className="text-xs text-gray-400 mb-3">{t('monthlyMoodTrendHint')}</Text>
                   <MoodLineChart
                     data={monthStats.daily_data.map(day => ({
                       label: `${new Date(day.date + 'T00:00:00').getMonth() + 1}/${new Date(day.date + 'T00:00:00').getDate()}`,
@@ -989,16 +1106,16 @@ export default function HistoryScreen() {
 
                 {plannedActivities.length > 0 && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-1">本月计划活动</Text>
-                    <Text className="text-xs text-gray-400 mb-3">查看哪些计划已经完成，哪些还需要调整</Text>
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">{t('monthlyPlannedActivities')}</Text>
+                    <Text className="text-xs text-gray-400 mb-3">{t('monthlyPlannedHint')}</Text>
                     <PlanListSection plannedActivities={plannedActivities} />
                   </View>
                 )}
 
                 {radarData && (
                   <View className="bg-white rounded-2xl p-4 mb-4">
-                    <Text className="text-sm font-semibold text-gray-700 mb-1">生活领域分布</Text>
-                    <Text className="text-xs text-gray-400 mb-3">本月活动覆盖的领域 · BATD-R 建议多领域均衡</Text>
+                    <Text className="text-sm font-semibold text-gray-700 mb-1">{t('lifeDomainDistribution')}</Text>
+                    <Text className="text-xs text-gray-400 mb-3">{t('monthDomainsCovered')}</Text>
                     <RadarChart data={radarData} />
                   </View>
                 )}

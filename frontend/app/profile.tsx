@@ -7,10 +7,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api } from '../src/api';
 import { useUserId, getIsUnlocked, setUnlocked, getParticipantCode } from '../src/userStore';
+import { AppLanguage, useLanguage } from '../src/i18n';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const userId = useUserId();
+  const { language, setLanguage, t } = useLanguage();
 
   const [isUnlocked, setIsUnlockedState] = useState(false);
   const [participantCode, setParticipantCodeState] = useState<string | null>(null);
@@ -36,14 +38,20 @@ export default function ProfileScreen() {
         await setUnlocked(inputCode.trim());
         setIsUnlockedState(true);
         setParticipantCodeState(inputCode.trim());
-        Alert.alert('解锁成功', '你现在可以使用完整功能了 🎉');
+        Alert.alert(t('unlockSuccessTitle'), t('unlockSuccessMessage'));
       }
     } catch (e: any) {
-      const msg = e?.message?.includes('400') ? '邀请码无效，请检查后重试' : '解锁失败，请检查网络后重试';
-      Alert.alert('解锁失败', msg);
+      const msg = e?.message?.includes('400') ? t('inviteInvalid') : t('unlockNetworkFail');
+      Alert.alert(t('unlockFailTitle'), msg);
     } finally {
       setUnlocking(false);
     }
+  };
+
+  const handleLanguageChange = async (nextLanguage: AppLanguage) => {
+    if (nextLanguage === language) return;
+    await setLanguage(nextLanguage);
+    api.setLanguage(userId, nextLanguage).catch(() => {});
   };
 
   return (
@@ -53,47 +61,71 @@ export default function ProfileScreen() {
         <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-1">
           <Text className="text-gray-500 text-lg">←</Text>
         </TouchableOpacity>
-        <Text className="font-semibold text-gray-800 text-base flex-1">我的</Text>
+        <Text className="font-semibold text-gray-800 text-base flex-1">{t('profileTitle')}</Text>
       </View>
 
       <ScrollView className="flex-1 px-4 pt-5" showsVerticalScrollIndicator={false}>
 
+        <View className="bg-white rounded-2xl p-5 mb-3 shadow-sm">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('languageSection')}</Text>
+          <View className="flex-row bg-gray-100 rounded-2xl p-1 mb-3">
+            {([
+              ['zh', t('chinese')],
+              ['en', t('english')],
+            ] as [AppLanguage, string][]).map(([value, label]) => {
+              const active = language === value;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  onPress={() => handleLanguageChange(value)}
+                  className={`flex-1 py-3 rounded-xl items-center ${active ? 'bg-white shadow-sm' : ''}`}
+                >
+                  <Text className={`text-sm font-semibold ${active ? 'text-orange-500' : 'text-gray-500'}`}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text className="text-xs text-gray-400 leading-relaxed">{t('languageHint')}</Text>
+        </View>
+
         {/* Device ID card */}
         <View className="bg-white rounded-2xl p-5 mb-3 shadow-sm">
-          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">设备标识</Text>
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('deviceSection')}</Text>
           <View className="flex-row items-center justify-between">
-            <Text className="text-sm text-gray-500">匿名 ID</Text>
+            <Text className="text-sm text-gray-500">{t('anonymousId')}</Text>
             <Text className="text-sm font-mono text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">
               {userId.slice(0, 8).toUpperCase()}
             </Text>
           </View>
           <Text className="text-xs text-gray-400 mt-2 leading-relaxed">
-            此 ID 用于区分不同设备，不含个人信息。如需关联参与者信息，请在下方解锁。
+            {t('deviceHelp')}
           </Text>
         </View>
 
         {/* Unlock card */}
         <View className="bg-white rounded-2xl p-5 mb-3 shadow-sm">
-          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">研究参与</Text>
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">{t('researchSection')}</Text>
           {isUnlocked ? (
             <View className="flex-row items-center gap-3 py-2">
               <Text className="text-2xl">✅</Text>
               <View>
-                <Text className="text-sm font-semibold text-gray-800">已解锁完整功能</Text>
+                <Text className="text-sm font-semibold text-gray-800">{t('unlocked')}</Text>
                 {participantCode && (
-                  <Text className="text-xs text-gray-500 mt-0.5">参与者编号：{participantCode}</Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">{t('participantCode')}: {participantCode}</Text>
                 )}
               </View>
             </View>
           ) : (
             <>
               <Text className="text-sm text-gray-500 mb-4 leading-relaxed">
-                输入研究员提供的参与者编号和邀请码，解锁 AI 功能。
+                {t('unlockHelp')}
               </Text>
               <TextInput
                 value={inputCode}
                 onChangeText={setInputCode}
-                placeholder="参与者编号（如 P001）"
+                placeholder={t('participantPlaceholder')}
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="none"
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
@@ -101,7 +133,7 @@ export default function ProfileScreen() {
               <TextInput
                 value={inputInvite}
                 onChangeText={setInputInvite}
-                placeholder="邀请码（如 STUDY2024）"
+                placeholder={t('invitePlaceholder')}
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="characters"
                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
@@ -114,7 +146,7 @@ export default function ProfileScreen() {
               >
                 {unlocking
                   ? <ActivityIndicator color="white" />
-                  : <Text className="text-white font-semibold">解锁</Text>
+                  : <Text className="text-white font-semibold">{t('unlock')}</Text>
                 }
               </TouchableOpacity>
             </>

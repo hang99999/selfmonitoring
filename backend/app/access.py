@@ -4,6 +4,7 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.i18n import localized_text
 from app.models import User
 
 
@@ -31,6 +32,6 @@ def require_ai_access(db: Session, user_id: str) -> User:
         status_code=402,
         detail={
             "code": "AI_ACCESS_REQUIRED",
-            "message": "请先输入邀请码或开通会员后使用 AI 功能",
+            "message": localized_text("ai_access_required", getattr(user, "language", None)),
         },
     )

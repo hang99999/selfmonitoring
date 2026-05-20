@@ -78,6 +78,7 @@ def _migrate():
             ("premium_until", "TIMESTAMP"),
             ("entitlement_source", "VARCHAR"),
             ("revenuecat_app_user_id", "VARCHAR"),
+            ("language", "VARCHAR DEFAULT 'zh'"),
         ]
         with engine.begin() as conn:
             for column, definition in user_migrations:

@@ -6,12 +6,13 @@ from collections import Counter
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.access import require_ai_access
 from app.database import SessionLocal, get_db
+from app.i18n import get_user_language, localized_text, output_language_rule
 from app.llm_client import call_llm, call_llm_chat
 from app.models import (
     User, MoodRecord, PlannedActivity, DailyMood,
@@ -707,7 +708,7 @@ def _phase_session_completed_since(
 
 # ── Session title background task ─────────────────────────────────────────────
 
-async def _generate_session_title(session_id: int, context_messages: list[dict]):
+async def _generate_session_title(session_id: int, context_messages: list[dict], language: str = "zh"):
     """Background task: ask LLM for a short session title, then save it."""
     db = SessionLocal()
     try:
@@ -719,7 +720,10 @@ async def _generate_session_title(session_id: int, context_messages: list[dict])
             f"{'用户' if m['role'] == 'user' else '小暖'}: {m['content'][:120]}"
             for m in context_messages[:8]
         )
-        system = "你是一个对话标题生成器。根据给定对话内容，输出一个5-10字的中文短语作为标题，不含标点，直接输出短语本身，例如：关于职场压力的讨论"
+        if language == "en":
+            system = "你是一个对话标题生成器。根据给定对话内容，输出一个3-8词的英文短语作为标题，不含标点，直接输出短语本身，例如：Work Stress Check In"
+        else:
+            system = "你是一个对话标题生成器。根据给定对话内容，输出一个5-10字的中文短语作为标题，不含标点，直接输出短语本身，例如：关于职场压力的讨论"
         title = await call_llm(system, lines)
         title = title.strip().strip("。，！？")[:60]
 
@@ -863,17 +867,15 @@ async def chat(
     req: ChatRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    app_language: str | None = Header(default=None, alias="X-App-Language"),
 ):
     """Process a chat turn. Client sends session_id + single message; history is loaded from DB."""
+    language = get_user_language(db, req.user_id, app_language)
+
     # Crisis detection before any LLM call
     if req.message.strip() and _is_crisis(req.message):
         return {
-            "reply": (
-                "你说的这些让我很担心你。我很希望你能跟现实中的人聊聊。\n\n"
-                "你可以拨打**全国心理援助热线 400-161-9995**，或者联系你身边信任的人。\n\n"
-                "如果你现在觉得不安全，请联系 120 或去最近的医院急诊。\n\n"
-                "我会一直在这里，随时告诉我你的情况。"
-            ),
+            "reply": localized_text("crisis_reply", language),
             "is_crisis": True,
             "detected_activity": None,
             "phase_step": None,
@@ -971,10 +973,12 @@ async def chat(
             f"若本条回复只是在 Part {current_step} 内回应用户的追问，不要加 [STEP_DONE]。"
         )
 
+    system += output_language_rule(language)
+
     # yunwu.ai (and most OpenAI-compatible APIs) reject requests with zero user
     # messages. Inject a sentinel when session-start trigger fires on empty history.
     if not llm_messages:
-        llm_messages = [{"role": "user", "content": "请开始对话"}]
+        llm_messages = [{"role": "user", "content": "Please start the conversation" if language == "en" else "请开始对话"}]
 
     # Call LLM
     reply = await call_llm_chat(system, llm_messages)
@@ -1012,7 +1016,7 @@ async def chat(
     session = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
     if session and not session.title and req.message.strip():
         title_ctx = (llm_messages + [{"role": "assistant", "content": reply}])[-8:]
-        background_tasks.add_task(_generate_session_title, req.session_id, title_ctx)
+        background_tasks.add_task(_generate_session_title, req.session_id, title_ctx, language)
 
     return {
         "reply": reply,

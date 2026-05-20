@@ -6,10 +6,24 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api } from '../src/api';
+import { useLanguage } from '../src/i18n';
 import { useUserId } from '../src/userStore';
 import type { Supporter } from '../src/types';
 
-const RELATIONSHIP_PRESETS = ['伴侣', '死党', '父母', '兄弟姐妹', '朋友', '同事'];
+const RELATIONSHIP_PRESETS = [
+  { zh: '伴侣', en: 'Partner' },
+  { zh: '死党', en: 'Close friend' },
+  { zh: '父母', en: 'Parent' },
+  { zh: '兄弟姐妹', en: 'Sibling' },
+  { zh: '朋友', en: 'Friend' },
+  { zh: '同事', en: 'Colleague' },
+];
+
+function displayRelationship(value: string | null | undefined, language: 'zh' | 'en') {
+  if (!value) return '';
+  const preset = RELATIONSHIP_PRESETS.find(item => item.zh === value || item.en === value);
+  return preset ? preset[language] : value;
+}
 
 function SupporterFormModal({
   visible,
@@ -23,6 +37,7 @@ function SupporterFormModal({
   onSaved: () => void;
 }) {
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [name, setName] = useState(initial?.name ?? '');
   const [relationship, setRelationship] = useState(initial?.relationship ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
@@ -57,34 +72,34 @@ function SupporterFormModal({
       <Pressable className="flex-1" onPress={onClose} />
       <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
         <Text className="text-base font-bold text-gray-800 mb-5">
-          {initial ? '编辑支持者' : '添加支持者'}
+          {initial ? t('editSupporter') : t('addSupporterTitle')}
         </Text>
 
-        <Text className="text-sm font-medium text-gray-600 mb-2">姓名 / 昵称</Text>
+        <Text className="text-sm font-medium text-gray-600 mb-2">{t('supporterName')}</Text>
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="例如：小明、妈妈"
+          placeholder={t('supporterNamePlaceholder')}
           placeholderTextColor="#9ca3af"
           autoFocus
           className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
         />
 
-        <Text className="text-sm font-medium text-gray-600 mb-2">关系</Text>
+        <Text className="text-sm font-medium text-gray-600 mb-2">{t('relationship')}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
           <View className="flex-row gap-2">
             {RELATIONSHIP_PRESETS.map(r => (
               <TouchableOpacity
-                key={r}
-                onPress={() => setRelationship(r)}
+                key={r.zh}
+                onPress={() => setRelationship(r.zh)}
                 className="px-3 py-1.5 rounded-full border"
                 style={{
-                  backgroundColor: relationship === r ? '#f97316' : '#fff',
-                  borderColor: relationship === r ? '#f97316' : '#e5e7eb',
+                  backgroundColor: relationship === r.zh ? '#f97316' : '#fff',
+                  borderColor: relationship === r.zh ? '#f97316' : '#e5e7eb',
                 }}
               >
-                <Text style={{ color: relationship === r ? '#fff' : '#6b7280' }} className="text-sm">
-                  {r}
+                <Text style={{ color: relationship === r.zh ? '#fff' : '#6b7280' }} className="text-sm">
+                  {r[language]}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -93,16 +108,16 @@ function SupporterFormModal({
         <TextInput
           value={relationship}
           onChangeText={setRelationship}
-          placeholder="或自定义关系"
+          placeholder={t('customRelationshipPlaceholder')}
           placeholderTextColor="#9ca3af"
           className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
         />
 
-        <Text className="text-sm font-medium text-gray-600 mb-2">擅长提供的帮助（可选）</Text>
+        <Text className="text-sm font-medium text-gray-600 mb-2">{t('supporterHelpLabel')}</Text>
         <TextInput
           value={notes}
           onChangeText={setNotes}
-          placeholder="例如：可以陪我出门，或者打电话聊天"
+          placeholder={t('supporterHelpPlaceholder')}
           placeholderTextColor="#9ca3af"
           multiline
           numberOfLines={2}
@@ -115,7 +130,7 @@ function SupporterFormModal({
           style={{ opacity: !name.trim() ? 0.4 : 1 }}
           className="w-full py-4 bg-orange-500 rounded-2xl items-center"
         >
-          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">保存</Text>}
+          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">{t('save')}</Text>}
         </TouchableOpacity>
       </View>
     </Modal>
@@ -125,6 +140,7 @@ function SupporterFormModal({
 export default function SupportersScreen() {
   const router = useRouter();
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [supporters, setSupporters] = useState<Supporter[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -142,9 +158,9 @@ export default function SupportersScreen() {
   useEffect(() => { load(); }, [load]);
 
   const handleDelete = (s: Supporter) => {
-    Alert.alert('删除支持者', `删除「${s.name}」？删除后与该支持者的活动关联也会一起移除。`, [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive', onPress: () => api.deleteSupporter(s.id).then(load) },
+    Alert.alert(t('deleteSupporter'), t('deleteSupporterQuestion').replace('{name}', s.name), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('delete'), style: 'destructive', onPress: () => api.deleteSupporter(s.id).then(load) },
     ]);
   };
 
@@ -157,18 +173,18 @@ export default function SupportersScreen() {
         <TouchableOpacity onPress={() => router.back()} className="mr-3 w-9 h-9 items-center justify-center">
           <Text className="text-gray-500 text-lg">‹</Text>
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-gray-800 flex-1">我的支持者</Text>
+        <Text className="text-xl font-bold text-gray-800 flex-1">{t('mySupporters')}</Text>
         <TouchableOpacity
           onPress={openAdd}
           className="bg-orange-500 px-4 py-2 rounded-xl"
         >
-          <Text className="text-white text-sm font-semibold">+ 添加</Text>
+          <Text className="text-white text-sm font-semibold">{t('addSupporter')}</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView className="flex-1 px-4 pt-2" showsVerticalScrollIndicator={false}>
         <Text className="text-sm text-gray-400 leading-relaxed mb-5">
-          记录你身边可以提供帮助的人。在规划活动时，你可以选择邀请他们一起参与或寻求支持。
+          {t('supportersPageHint')}
         </Text>
 
         {loading && (
@@ -180,15 +196,15 @@ export default function SupportersScreen() {
         {!loading && supporters.length === 0 && (
           <View className="items-center py-16">
             <Text className="text-4xl mb-3">👥</Text>
-            <Text className="text-gray-500 text-sm text-center">还没有添加支持者</Text>
+            <Text className="text-gray-500 text-sm text-center">{t('noSupportersYet')}</Text>
             <Text className="text-gray-400 text-xs text-center mt-1">
-              家人、朋友都可以成为你的支持力量
+              {t('supportersEmptyHint')}
             </Text>
             <TouchableOpacity
               onPress={openAdd}
               className="mt-5 bg-orange-500 px-6 py-3 rounded-2xl"
             >
-              <Text className="text-white font-semibold">添加第一位支持者</Text>
+              <Text className="text-white font-semibold">{t('addFirstSupporter')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -205,7 +221,7 @@ export default function SupportersScreen() {
                   <Text className="font-semibold text-gray-800">{s.name}</Text>
                   {s.relationship && (
                     <View className="bg-orange-100 px-2 py-0.5 rounded-full">
-                      <Text className="text-xs text-orange-600">{s.relationship}</Text>
+                      <Text className="text-xs text-orange-600">{displayRelationship(s.relationship, language)}</Text>
                     </View>
                   )}
                 </View>

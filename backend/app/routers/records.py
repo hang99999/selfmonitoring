@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.access import has_ai_access, require_ai_access
@@ -16,6 +16,7 @@ from app.schemas import (
     RecordConfirmRequest,
 )
 from app.llm_client import call_llm
+from app.i18n import get_user_language, localized_text, output_language_rule
 from app.prompts import safety_check_prompt, structured_extraction_prompt, empathic_feedback_prompt
 
 router = APIRouter(prefix="/api/record", tags=["records"])
@@ -91,6 +92,7 @@ async def _run_ai_background(
     thought: str,
     pleasure_score: float,
     importance_score: float,
+    language: str,
     run_safety_check: bool = False,
 ):
     """Background task: optionally re-run safety check, then generate empathic feedback."""
@@ -117,6 +119,7 @@ async def _run_ai_background(
             recent_records_summary=recent_summary,
             db=db,
         )
+        sys_prompt += output_language_rule(language)
         feedback = await call_llm(sys_prompt, user_msg)
 
         record = db.query(MoodRecord).filter(MoodRecord.id == record_id).first()
@@ -124,7 +127,7 @@ async def _run_ai_background(
             if feedback and not feedback.startswith("[LLM Error]"):
                 record.ai_immediate_feedback = feedback
             else:
-                record.ai_immediate_feedback = "你做到了，记录本身就是一种行动，小暖为你感到高兴～"
+                record.ai_immediate_feedback = localized_text("record_feedback_fallback", language)
             if new_risk_level is not None:
                 record.risk_level = new_risk_level
             db.commit()
@@ -133,7 +136,7 @@ async def _run_ai_background(
         try:
             record = db.query(MoodRecord).filter(MoodRecord.id == record_id).first()
             if record and not record.ai_immediate_feedback:
-                record.ai_immediate_feedback = "你做到了，记录本身就是一种行动，小暖为你感到高兴～"
+                record.ai_immediate_feedback = localized_text("record_feedback_fallback", language)
                 db.commit()
         except Exception:
             pass
@@ -146,6 +149,7 @@ async def submit_record(
     req: RecordSubmitRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    app_language: str | None = Header(default=None, alias="X-App-Language"),
 ):
     user_id = req.user_id
     require_ai_access(db, user_id)
@@ -156,6 +160,7 @@ async def submit_record(
         user = User(id=user_id)
         db.add(user)
         db.commit()
+    language = get_user_language(db, user_id, app_language)
 
     def _resolve_domain_id(domain_name: str, uid: str) -> Optional[str]:
         """Resolve a domain name like '自我关怀' to its UUID; returns None for '其他' or unknown."""
@@ -239,6 +244,7 @@ async def submit_record(
             _run_ai_background,
             record.id, req.text, user_id,
             activity, "", pleasure_score, importance_score,
+            language,
             True,  # quick-save path: safety check not yet done
         )
 
@@ -338,6 +344,7 @@ async def submit_record(
         _run_ai_background,
         record.id, req.text, user_id,
         activity, thought, pleasure_score, importance_score,
+        language,
         False,  # standard path: safety check already done synchronously above
     )
 
@@ -349,6 +356,7 @@ async def create_manual_record(
     req: ManualRecordCreateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    app_language: str | None = Header(default=None, alias="X-App-Language"),
 ):
     """Save a structured activity record without any LLM/ASR usage."""
     user_id = req.user_id
@@ -357,6 +365,7 @@ async def create_manual_record(
         user = User(id=user_id)
         db.add(user)
         db.commit()
+    language = get_user_language(db, user_id, app_language)
 
     activity = req.activity.strip()
     if not activity:
@@ -391,6 +400,7 @@ async def create_manual_record(
             _run_ai_background,
             record.id, raw_text, user_id,
             activity, thought, pleasure_score, importance_score,
+            language,
             False,
         )
     return record

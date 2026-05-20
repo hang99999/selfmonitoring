@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
 import { api, isAiAccessRequiredError } from '../src/api';
+import { translateDomainName, useLanguage } from '../src/i18n';
 import type { MoodRecord, LifeDomain } from '../src/types';
 import VoiceRecordButton from './VoiceRecordButton';
 
 // Fixed domain list (names match DEFAULT_LIFE_DOMAINS on backend)
 const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '自我关怀', '日常责任', '其他'] as const;
-const AI_ACCESS_MESSAGE = '需要先解锁或开通会员，才能使用自由记录解析。';
 
 interface Props {
   visible: boolean;
@@ -54,9 +54,10 @@ function RecordModeTabs({ value, onChange }: {
   value: 'input' | 'manual';
   onChange: (value: 'input' | 'manual') => void;
 }) {
+  const { t } = useLanguage();
   const modes: Array<{ value: 'input' | 'manual'; label: string }> = [
-    { value: 'input', label: '自由记录' },
-    { value: 'manual', label: '手动记录' },
+    { value: 'input', label: t('freeRecord') },
+    { value: 'manual', label: t('manualRecord') },
   ];
   return (
     <View className="flex-row bg-gray-100 rounded-2xl p-1 mb-5">
@@ -84,9 +85,10 @@ export default function RecordModal({
   plannedActivityId, plannedActivityName, prefillActivity,
   userId = 'default_user',
 }: Props) {
+  const { language, t } = useLanguage();
   const [step, setStep] = useState<'input' | 'manual' | 'loading' | 'result' | 'done' | 'crisis'>('input');
   const [aiEnabled, setAiEnabled] = useState<boolean | null>(null);
-  const [text, setText] = useState(prefillActivity ? `做了：${prefillActivity}` : '');
+  const [text, setText] = useState(prefillActivity ? (language === 'en' ? `Did: ${prefillActivity}` : `做了：${prefillActivity}`) : '');
   const [record, setRecord] = useState<MoodRecord | null>(null);
   const [activity, setActivity] = useState('');
   const [thought, setThought] = useState('');
@@ -102,7 +104,7 @@ export default function RecordModal({
   const reset = () => {
     setStep('input');
     setAiEnabled(null);
-    setText(prefillActivity ? `做了：${prefillActivity}` : '');
+    setText(prefillActivity ? (language === 'en' ? `Did: ${prefillActivity}` : `做了：${prefillActivity}`) : '');
     setRecord(null);
     setActivity('');
     setThought('');
@@ -170,7 +172,7 @@ export default function RecordModal({
         setStep('result');
       }
     } catch (error) {
-      setError(isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '提交失败，请重试');
+      setError(isAiAccessRequiredError(error) ? t('aiRecordAccessMessage') : t('submitFailed'));
       setStep('input');
     } finally {
       setSubmitting(false);
@@ -192,7 +194,7 @@ export default function RecordModal({
       onRecordSubmitted?.(updated.id);
       setTimeout(() => { handleClose(); }, 1800);
     } catch {
-      setError('确认失败，请重试');
+      setError(t('confirmFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -216,7 +218,7 @@ export default function RecordModal({
       onRecordSubmitted?.(saved.id);
       setTimeout(() => { handleClose(); }, 1200);
     } catch {
-      setError('保存失败，请重试');
+      setError(t('saveFailed'));
     } finally {
       setSubmitting(false);
     }
@@ -238,8 +240,8 @@ export default function RecordModal({
           {step === 'done' && (
             <View className="items-center py-10">
               <Text className="text-5xl mb-4">✅</Text>
-              <Text className="text-gray-800 font-semibold text-lg">记录成功！</Text>
-              <Text className="text-sm text-gray-500 mt-1">继续保持对自己的关注～</Text>
+              <Text className="text-gray-800 font-semibold text-lg">{t('recordDoneTitle')}</Text>
+              <Text className="text-sm text-gray-500 mt-1">{t('recordDoneSubtitle')}</Text>
             </View>
           )}
 
@@ -247,14 +249,14 @@ export default function RecordModal({
           {step === 'loading' && (
             <View className="items-center py-12">
               <ActivityIndicator size="large" color="#f97316" />
-              <Text className="text-gray-500 mt-4 text-sm">小暖正在解析…</Text>
+              <Text className="text-gray-500 mt-4 text-sm">{t('parsingRecord')}</Text>
             </View>
           )}
 
           {step === 'input' && aiEnabled === null && (
             <View className="items-center py-12">
               <ActivityIndicator size="large" color="#f97316" />
-              <Text className="text-gray-500 mt-4 text-sm">正在准备记录...</Text>
+              <Text className="text-gray-500 mt-4 text-sm">{t('preparingRecord')}</Text>
             </View>
           )}
 
@@ -262,14 +264,14 @@ export default function RecordModal({
           {step === 'input' && aiEnabled === true && (
             <>
               <RecordModeTabs value="input" onChange={setStep} />
-              <Text className="text-lg font-bold text-gray-800 mb-1">自由记录</Text>
-              <Text className="text-sm text-gray-400 mb-4">你今天做了什么？简单描述一下</Text>
+              <Text className="text-lg font-bold text-gray-800 mb-1">{t('freeRecord')}</Text>
+              <Text className="text-sm text-gray-400 mb-4">{t('freeRecordSubtitle')}</Text>
 
               {plannedActivityName && (
                 <View className="mb-4 px-4 py-3 bg-blue-50 rounded-xl flex-row items-center">
                   <Text className="text-blue-500 text-sm mr-2">📋</Text>
                   <Text className="text-sm text-blue-700 flex-1">
-                    正在记录：<Text className="font-semibold">{plannedActivityName}</Text>
+                    {t('recordingActivity')}<Text className="font-semibold">{plannedActivityName}</Text>
                   </Text>
                 </View>
               )}
@@ -277,7 +279,7 @@ export default function RecordModal({
               <TextInput
                 value={text}
                 onChangeText={setText}
-                placeholder="比如：今天下午去超市买了菜，顺路在公园散了步..."
+                placeholder={t('freeRecordPlaceholder')}
                 multiline
                 style={{ minHeight: 100, textAlignVertical: 'top' }}
                 className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-800"
@@ -288,7 +290,7 @@ export default function RecordModal({
               {/* 语音输入 */}
               <View className="flex-row items-center mt-4 mb-1 gap-3">
                 <View className="flex-1 h-px bg-gray-100" />
-                <Text className="text-xs text-gray-400">或用语音</Text>
+                <Text className="text-xs text-gray-400">{t('orUseVoice')}</Text>
                 <View className="flex-1 h-px bg-gray-100" />
               </View>
               <VoiceRecordButton
@@ -307,10 +309,10 @@ export default function RecordModal({
                 className="mt-4 w-full py-4 bg-orange-500 rounded-2xl items-center"
                 style={{ opacity: !text.trim() ? 0.4 : 1 }}
               >
-                <Text className="text-white font-semibold text-base">提交记录</Text>
+                <Text className="text-white font-semibold text-base">{t('submitRecord')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleClose} className="mt-3 items-center py-2">
-                <Text className="text-gray-400 text-sm">取消</Text>
+                <Text className="text-gray-400 text-sm">{t('cancel')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -319,28 +321,28 @@ export default function RecordModal({
           {step === 'manual' && (
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {aiEnabled === true && <RecordModeTabs value="manual" onChange={setStep} />}
-              <Text className="text-lg font-bold text-gray-800 mb-1">手动记录活动</Text>
+              <Text className="text-lg font-bold text-gray-800 mb-1">{t('manualRecordTitle')}</Text>
               <Text className="text-sm text-gray-400 mb-5">
                 {aiEnabled
-                  ? '直接填写活动和评分，保存后小暖会回应你。'
-                  : '填写活动和评分即可保存；自由记录和语音转写需解锁后使用。'}
+                  ? t('manualRecordAiHint')
+                  : t('manualRecordLockedHint')}
               </Text>
 
               {plannedActivityName && (
                 <View className="mb-4 px-4 py-3 bg-blue-50 rounded-xl flex-row items-center">
                   <Text className="text-blue-500 text-sm mr-2">•</Text>
                   <Text className="text-sm text-blue-700 flex-1">
-                    正在记录：<Text className="font-semibold">{plannedActivityName}</Text>
+                    {t('recordingActivity')}<Text className="font-semibold">{plannedActivityName}</Text>
                   </Text>
                 </View>
               )}
 
               <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-500 mb-1">活动</Text>
+                <Text className="text-sm font-medium text-gray-500 mb-1">{t('activity')}</Text>
                 <TextInput
                   value={activity}
                   onChangeText={setActivity}
-                  placeholder="比如：散步 10 分钟、给朋友发消息、整理书桌"
+                  placeholder={t('manualActivityPlaceholder')}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-700 bg-white"
                   placeholderTextColor="#9ca3af"
                 />
@@ -348,19 +350,19 @@ export default function RecordModal({
 
               <View className="mb-5">
                 <Text className="text-sm font-medium text-gray-500 mb-1">
-                  想法 <Text className="text-gray-400 font-normal">（可选）</Text>
+                  {t('thought')} <Text className="text-gray-400 font-normal">{t('optional')}</Text>
                 </Text>
                 <TextInput
                   value={thought}
                   onChangeText={setThought}
-                  placeholder="这次活动让你想到什么..."
+                  placeholder={t('thoughtPlaceholder')}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-700 bg-white"
                   placeholderTextColor="#9ca3af"
                 />
               </View>
 
               <View className="mb-5">
-                <Text className="text-sm font-medium text-gray-500 mb-2">生活领域</Text>
+                <Text className="text-sm font-medium text-gray-500 mb-2">{t('lifeDomain')}</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {DOMAIN_NAMES.map(name => {
                     const domain = domains.find(d => d.name === name);
@@ -377,7 +379,7 @@ export default function RecordModal({
                         }}
                       >
                         <Text style={{ color: isSelected ? '#fff' : '#6b7280' }} className="text-xs font-medium">
-                          {name}
+                          {translateDomainName(name, language)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -386,9 +388,9 @@ export default function RecordModal({
               </View>
 
               <View className="bg-gray-50 rounded-2xl p-4 mb-5">
-                <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">活动评分</Text>
-                <ScoreRow label="愉悦度（有多享受？）" value={pleasure} onChange={setPleasure} activeColor="#f97316" />
-                <ScoreRow label="重要性（对你有多重要？）" value={importance} onChange={setImportance} activeColor="#6366f1" />
+                <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">{t('activityRating')}</Text>
+                <ScoreRow label={t('pleasureLabel')} value={pleasure} onChange={setPleasure} activeColor="#f97316" />
+                <ScoreRow label={t('importanceLabel')} value={importance} onChange={setImportance} activeColor="#6366f1" />
               </View>
 
               {error ? <Text className="text-red-500 text-sm mb-3">{error}</Text> : null}
@@ -401,11 +403,11 @@ export default function RecordModal({
               >
                 {submitting
                   ? <ActivityIndicator color="white" />
-                  : <Text className="text-white font-semibold text-base">保存记录</Text>
+                  : <Text className="text-white font-semibold text-base">{t('saveRecord')}</Text>
                 }
               </TouchableOpacity>
               <TouchableOpacity onPress={handleClose} className="items-center py-2">
-                <Text className="text-gray-400 text-sm">取消</Text>
+                <Text className="text-gray-400 text-sm">{t('cancel')}</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -413,18 +415,18 @@ export default function RecordModal({
           {/* result */}
           {step === 'result' && record && (
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text className="text-lg font-bold text-gray-800 mb-1">确认记录</Text>
-              <Text className="text-sm text-gray-400 mb-5">AI已自动识别，你可以修改后确认</Text>
+              <Text className="text-lg font-bold text-gray-800 mb-1">{t('confirmRecord')}</Text>
+              <Text className="text-sm text-gray-400 mb-5">{t('confirmRecordSubtitle')}</Text>
 
               {record.risk_level === 'high' && (
                 <View className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-2xl">
-                  <Text className="text-yellow-800 text-sm font-semibold mb-1">我们注意到你可能正在经历一些困难</Text>
-                  <Text className="text-yellow-700 text-sm">如需帮助，请拨打：全国心理援助热线 400-161-9995</Text>
+                  <Text className="text-yellow-800 text-sm font-semibold mb-1">{t('highRiskTitle')}</Text>
+                  <Text className="text-yellow-700 text-sm">{t('highRiskHelp')}</Text>
                 </View>
               )}
 
               <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-500 mb-1">活动</Text>
+                <Text className="text-sm font-medium text-gray-500 mb-1">{t('activity')}</Text>
                 <TextInput
                   value={activity}
                   onChangeText={setActivity}
@@ -434,12 +436,12 @@ export default function RecordModal({
 
               <View className="mb-5">
                 <Text className="text-sm font-medium text-gray-500 mb-1">
-                  想法 <Text className="text-gray-400 font-normal">（可选）</Text>
+                  {t('thought')} <Text className="text-gray-400 font-normal">{t('optional')}</Text>
                 </Text>
                 <TextInput
                   value={thought}
                   onChangeText={setThought}
-                  placeholder="这次活动让你想到了什么..."
+                  placeholder={t('thoughtPlaceholder')}
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl text-gray-700 bg-white"
                   placeholderTextColor="#9ca3af"
                 />
@@ -447,7 +449,7 @@ export default function RecordModal({
 
               {/* Domain selector */}
               <View className="mb-5">
-                <Text className="text-sm font-medium text-gray-500 mb-2">生活领域</Text>
+                <Text className="text-sm font-medium text-gray-500 mb-2">{t('lifeDomain')}</Text>
                 <View className="flex-row flex-wrap gap-2">
                   {DOMAIN_NAMES.map(name => {
                     const domain = domains.find(d => d.name === name);
@@ -464,7 +466,7 @@ export default function RecordModal({
                         }}
                       >
                         <Text style={{ color: isSelected ? '#fff' : '#6b7280' }} className="text-xs font-medium">
-                          {name}
+                          {translateDomainName(name, language)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -473,14 +475,14 @@ export default function RecordModal({
               </View>
 
               <View className="bg-gray-50 rounded-2xl p-4 mb-5">
-                <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">活动评分</Text>
-                <ScoreRow label="愉悦度（有多享受？）" value={pleasure} onChange={setPleasure} activeColor="#f97316" />
-                <ScoreRow label="重要性（对你有多重要？）" value={importance} onChange={setImportance} activeColor="#6366f1" />
+                <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">{t('activityRating')}</Text>
+                <ScoreRow label={t('pleasureLabel')} value={pleasure} onChange={setPleasure} activeColor="#f97316" />
+                <ScoreRow label={t('importanceLabel')} value={importance} onChange={setImportance} activeColor="#6366f1" />
               </View>
 
               <View className="px-4 py-3 bg-orange-50 rounded-2xl flex-row items-center mb-5">
                 <Text className="text-lg mr-2">💬</Text>
-                <Text className="text-sm text-gray-500 flex-1">确认后，小暖会在主页回应你～</Text>
+                <Text className="text-sm text-gray-500 flex-1">{t('confirmFeedbackHint')}</Text>
               </View>
 
               {error ? <Text className="text-red-500 text-sm mb-3">{error}</Text> : null}
@@ -493,7 +495,7 @@ export default function RecordModal({
               >
                 {submitting
                   ? <ActivityIndicator color="white" />
-                  : <Text className="text-white font-semibold text-base">确认记录</Text>
+                  : <Text className="text-white font-semibold text-base">{t('confirmRecord')}</Text>
                 }
               </TouchableOpacity>
             </ScrollView>
@@ -503,12 +505,12 @@ export default function RecordModal({
           {step === 'crisis' && (
             <View className="items-center pt-4">
               <Text className="text-4xl mb-4">❤️</Text>
-              <Text className="text-xl font-bold text-red-800 mb-2 text-center">我们很关心你的安全</Text>
-              <Text className="text-sm text-red-600 mb-5 text-center">如果你正在经历困难，请联系专业支持</Text>
+              <Text className="text-xl font-bold text-red-800 mb-2 text-center">{t('crisisTitle')}</Text>
+              <Text className="text-sm text-red-600 mb-5 text-center">{t('highRiskHelp')}</Text>
               {[
-                ['全国心理援助热线', '400-161-9995'],
-                ['北京危机热线', '010-82951332'],
-                ['24小时生命热线', '400-821-1215'],
+                [language === 'en' ? 'National mental health support hotline' : '全国心理援助热线', '400-161-9995'],
+                [language === 'en' ? 'Beijing crisis hotline' : '北京危机热线', '010-82951332'],
+                [language === 'en' ? '24-hour lifeline' : '24小时生命热线', '400-821-1215'],
               ].map(([label, num]) => (
                 <TouchableOpacity
                   key={num}
@@ -520,10 +522,10 @@ export default function RecordModal({
                 </TouchableOpacity>
               ))}
               <Text className="text-xs text-red-500 text-center mt-3 mb-5">
-                如处于危险中，请立即拨打 120
+                {t('crisisEmergency')}
               </Text>
               <TouchableOpacity onPress={handleClose} className="w-full py-4 bg-red-500 rounded-2xl items-center">
-                <Text className="text-white font-semibold">我知道了</Text>
+                <Text className="text-white font-semibold">{t('crisisAcknowledge')}</Text>
               </TouchableOpacity>
             </View>
           )}

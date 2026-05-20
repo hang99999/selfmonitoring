@@ -23,6 +23,7 @@ class User(Base):
     premium_until = Column(DateTime, nullable=True)
     entitlement_source = Column(String, nullable=True)
     revenuecat_app_user_id = Column(String, nullable=True)
+    language = Column(String, default="zh")
 
 
 class AccessCode(Base):

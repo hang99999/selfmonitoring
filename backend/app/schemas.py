@@ -273,6 +273,11 @@ class UnlockRequest(BaseModel):
     invite_code: str
 
 
+class LanguageUpdateRequest(BaseModel):
+    user_id: str
+    language: str
+
+
 class UnlockResponse(BaseModel):
     ok: bool
     message: str

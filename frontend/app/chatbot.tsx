@@ -10,18 +10,20 @@ import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
 import { api, isAiAccessRequiredError } from '../src/api';
+import { AppLanguage, translateDomainName, useLanguage } from '../src/i18n';
 import { useUserId } from '../src/userStore';
 import type {
   ChatMessage, ChatSession, TreatmentProgressData, LifeDomain,
   MoodRecord, Value, Activity, PlannedActivity,
 } from '../src/types';
 
-const AI_ACCESS_MESSAGE = '需要先解锁或开通会员，才能使用 AI 对话。你可以到「我的」里输入邀请码。';
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatDate(isoString: string) {
+function formatDate(isoString: string, language: AppLanguage) {
   const d = new Date(isoString);
+  if (language === 'en') {
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
   const month = d.getMonth() + 1;
   const day = d.getDate();
   return `${month}月${day}日`;
@@ -29,20 +31,25 @@ function formatDate(isoString: string) {
 
 // ── Crisis modal ──────────────────────────────────────────────────────────────
 function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { language, t } = useLanguage();
   return (
     <Modal visible={visible} animationType="fade" transparent>
       <View className="flex-1 bg-black/50 justify-center px-4">
         <View className="bg-red-50 rounded-3xl p-8">
-          <Text className="text-xl font-bold text-red-800 text-center mb-4">我们很关心你的安全</Text>
-          {[['全国心理援助热线', '400-161-9995'], ['北京心理危机干预中心', '010-82951332'], ['生命热线', '400-821-1215']].map(([label, num]) => (
+          <Text className="text-xl font-bold text-red-800 text-center mb-4">{t('crisisTitle')}</Text>
+          {[
+            [language === 'en' ? 'National mental health support hotline' : '全国心理援助热线', '400-161-9995'],
+            [language === 'en' ? 'Beijing crisis intervention center' : '北京心理危机干预中心', '010-82951332'],
+            [language === 'en' ? 'Lifeline' : '生命热线', '400-821-1215'],
+          ].map(([label, num]) => (
             <View key={num} className="px-4 py-3 bg-white rounded-2xl flex-row justify-between mb-2">
               <Text className="text-sm text-gray-500">{label}</Text>
               <Text className="font-bold text-red-600">{num}</Text>
             </View>
           ))}
-          <Text className="text-sm text-red-700 text-center my-4">如正处于危险中，请立即拨打 120</Text>
+          <Text className="text-sm text-red-700 text-center my-4">{t('crisisEmergency')}</Text>
           <TouchableOpacity onPress={onClose} className="py-3 bg-red-500 rounded-full items-center">
-            <Text className="text-white font-medium">我知道了</Text>
+            <Text className="text-white font-medium">{t('crisisAcknowledge')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -54,17 +61,20 @@ function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => vo
 function ActivityBanner({
   name, type, onRecord, onPlan, onDismiss,
 }: { name: string; type: 'completed' | 'planned'; onRecord: () => void; onPlan: () => void; onDismiss: () => void }) {
+  const { language, t } = useLanguage();
   return (
     <View className="mx-4 mb-2 bg-orange-50 border border-orange-200 rounded-2xl px-4 py-3 flex-row items-center gap-3">
       <Text className="text-lg">📋</Text>
       <Text className="flex-1 text-xs text-orange-700 font-medium">
-        {type === 'completed' ? `要记录「${name}」吗？` : `要把「${name}」加入日程吗？`}
+        {type === 'completed'
+          ? language === 'en' ? `${t('askRecordActivity')} "${name}"?` : `${t('askRecordActivity')}「${name}」吗？`
+          : language === 'en' ? `${t('askPlanActivity')} "${name}" ${t('addToScheduleQuestion')}` : `${t('askPlanActivity')}「${name}」${t('addToScheduleQuestion')}`}
       </Text>
       <TouchableOpacity
         onPress={type === 'completed' ? onRecord : onPlan}
         className={`px-3 py-1.5 rounded-xl ${type === 'completed' ? 'bg-orange-500' : 'bg-indigo-500'}`}
       >
-        <Text className="text-white text-xs font-medium">{type === 'completed' ? '记录' : '计划'}</Text>
+        <Text className="text-white text-xs font-medium">{type === 'completed' ? t('record') : t('plan')}</Text>
       </TouchableOpacity>
       <TouchableOpacity onPress={onDismiss}>
         <Text className="text-gray-400 text-sm">✕</Text>
@@ -76,6 +86,7 @@ function ActivityBanner({
 // ── Quick plan modal ──────────────────────────────────────────────────────────
 function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose: () => void }) {
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [name, setName] = useState(defaultName);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -135,11 +146,11 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
         {done ? (
           <View className="items-center py-8">
             <Text className="text-4xl mb-2">📅</Text>
-            <Text className="font-semibold text-gray-800">已加入日程！</Text>
+            <Text className="font-semibold text-gray-800">{t('plannedAdded')}</Text>
           </View>
         ) : (
           <>
-            <Text className="font-bold text-gray-800 text-base mb-4">计划这项活动</Text>
+            <Text className="font-bold text-gray-800 text-base mb-4">{t('planThisActivity')}</Text>
             <TextInput value={name} onChangeText={handleNameChange} autoFocus
               className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
             />
@@ -150,14 +161,14 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
               }}
             >
               <Text className="text-xs text-indigo-500 mb-3">
-                {showLibrary ? '收起活动库' : '从活动库选取'}
+                {showLibrary ? t('collapseLibrary') : t('chooseFromLibrary')}
               </Text>
             </TouchableOpacity>
             {showLibrary && (
               <View className="border border-gray-200 rounded-xl mb-4 max-h-32 overflow-hidden">
                 <ScrollView>
                   {libraryActivities.length === 0
-                    ? <Text className="text-xs text-gray-400 px-3 py-3 text-center">活动库为空</Text>
+                    ? <Text className="text-xs text-gray-400 px-3 py-3 text-center">{t('emptyActivityLibrary')}</Text>
                     : libraryActivities.map(activity => (
                         <TouchableOpacity
                           key={activity.id}
@@ -173,7 +184,7 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
             )}
             {domains.length > 0 && (
               <>
-                <Text className="text-xs font-medium text-gray-500 mb-2">生活领域（可选）</Text>
+                <Text className="text-xs font-medium text-gray-500 mb-2">{t('lifeDomainOptional')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
                   <View className="flex-row gap-2">
                     <TouchableOpacity
@@ -185,7 +196,7 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
                       }}
                     >
                       <Text style={{ color: selectedDomainId === null ? '#fff' : '#4b5563' }} className="text-xs font-medium">
-                        其他
+                        {t('other')}
                       </Text>
                     </TouchableOpacity>
                     {domains.map(domain => (
@@ -199,7 +210,7 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
                         }}
                       >
                         <Text style={{ color: selectedDomainId === domain.id ? '#fff' : '#4b5563' }} className="text-xs font-medium">
-                          {domain.name}
+                          {translateDomainName(domain.name, language)}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -212,14 +223,14 @@ function QuickPlanModal({ defaultName, onClose }: { defaultName: string; onClose
                 <TouchableOpacity key={d} onPress={() => setDate(d)}
                   className={`px-4 py-2 rounded-xl border ${date === d ? 'bg-indigo-500 border-indigo-500' : 'bg-white border-gray-200'}`}>
                   <Text className={`text-sm font-medium ${date === d ? 'text-white' : 'text-gray-600'}`}>
-                    {d === fmt(new Date()) ? '今天' : '明天'}
+                    {d === fmt(new Date()) ? t('today') : language === 'en' ? 'Tomorrow' : '明天'}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
             <TouchableOpacity onPress={submit} disabled={!name.trim() || submitting}
               className="w-full py-4 bg-indigo-500 rounded-2xl items-center">
-              {submitting ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">确定</Text>}
+              {submitting ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">{t('ok')}</Text>}
             </TouchableOpacity>
           </>
         )}
@@ -266,13 +277,14 @@ function Bubble({ msg }: { msg: ChatMessage }) {
 type S2ActionMessage = (msg: string) => void;
 
 function S2ScatterCard({
-  progress, userId, includePlans = false, title = '上一阶段以来的活动分布',
+  progress, userId, includePlans = false, title,
 }: {
   progress: TreatmentProgressData | null;
   userId: string;
   includePlans?: boolean;
   title?: string;
 }) {
+  const { t } = useLanguage();
   const [records, setRecords] = useState<MoodRecord[]>([]);
   const [plans, setPlans] = useState<PlannedActivity[]>([]);
   const [loading, setLoading] = useState(false);
@@ -316,10 +328,10 @@ function S2ScatterCard({
   const xOf = (v: number) => PL + (clamp(v) / 10) * innerW;
   const yOf = (v: number) => PT + innerH - (clamp(v) / 10) * innerH;
   const quadrants = [
-    { key: 'highBoth', label: '高愉悦高重要', color: '#16a34a' },
-    { key: 'importantOnly', label: '低愉悦高重要', color: '#6366f1' },
-    { key: 'pleasantOnly', label: '高愉悦低重要', color: '#f97316' },
-    { key: 'lowBoth', label: '低愉悦低重要', color: '#9ca3af' },
+    { key: 'highBoth', label: t('highPleasureHighImportance'), color: '#16a34a' },
+    { key: 'importantOnly', label: t('lowPleasureHighImportance'), color: '#6366f1' },
+    { key: 'pleasantOnly', label: t('highPleasureLowImportance'), color: '#f97316' },
+    { key: 'lowBoth', label: t('lowPleasureLowImportance'), color: '#9ca3af' },
   ] as const;
   const grouped = quadrants.reduce<Record<typeof quadrants[number]['key'], typeof scored>>((acc, q) => {
     acc[q.key] = [];
@@ -336,15 +348,15 @@ function S2ScatterCard({
 
   return (
     <View className="bg-white rounded-2xl border border-orange-100 px-4 py-4 mb-3">
-      <Text className="text-xs font-semibold text-orange-500 mb-1">{title}</Text>
+      <Text className="text-xs font-semibold text-orange-500 mb-1">{title ?? t('previousPhaseDistribution')}</Text>
       <Text className="text-xs text-gray-400 mb-3">
-        每个数字点是一条活动记录，横轴是愉悦感，纵轴是重要性。{includePlans ? '绿色描边表示已完成的计划活动。' : ''}
+        {t('chartHint')}{includePlans ? ` ${t('completedPlanOutlineHint')}` : ''}
       </Text>
       {loading ? (
         <View className="py-8 items-center"><ActivityIndicator color="#f97316" /></View>
       ) : scored.length === 0 ? (
         <View className="py-8 items-center">
-          <Text className="text-sm text-gray-400">当前范围还没有可绘制的评分记录</Text>
+          <Text className="text-sm text-gray-400">{t('noScoredRecords')}</Text>
         </View>
       ) : (
         <>
@@ -362,12 +374,12 @@ function S2ScatterCard({
                 <SvgText x={PL - 8} y={yOf(v) + 3} fontSize={9} fill="#9ca3af" textAnchor="end">{v}</SvgText>
               </G>
             ))}
-            <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">愉悦感</SvgText>
-            <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>重要性</SvgText>
-            <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">低愉悦高重要</SvgText>
-            <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">高愉悦高重要</SvgText>
-            <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">低愉悦低重要</SvgText>
-            <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">高愉悦低重要</SvgText>
+            <SvgText x={PL + innerW / 2} y={chartH - 2} fontSize={10} fill="#6b7280" textAnchor="middle">{t('pleasureShort')}</SvgText>
+            <SvgText x={12} y={PT + innerH / 2} fontSize={10} fill="#6b7280" textAnchor="middle" rotation="-90" origin={`12, ${PT + innerH / 2}`}>{t('importanceShort')}</SvgText>
+            <SvgText x={PL + innerW * 0.25} y={PT + 14} fontSize={9} fill="#6366f1" textAnchor="middle">{t('lowPleasureHighImportance')}</SvgText>
+            <SvgText x={PL + innerW * 0.75} y={PT + 14} fontSize={9} fill="#16a34a" textAnchor="middle">{t('highPleasureHighImportance')}</SvgText>
+            <SvgText x={PL + innerW * 0.25} y={PT + innerH - 8} fontSize={9} fill="#9ca3af" textAnchor="middle">{t('lowPleasureLowImportance')}</SvgText>
+            <SvgText x={PL + innerW * 0.75} y={PT + innerH - 8} fontSize={9} fill="#f97316" textAnchor="middle">{t('highPleasureLowImportance')}</SvgText>
             {scored.map(({ record, index }) => {
               const x = xOf(record.pleasure_score ?? 0);
               const y = yOf(record.importance_score ?? 0);
@@ -399,13 +411,13 @@ function S2ScatterCard({
                   return (
                     <View key={`${record.id}-legend-${index}`} className="flex-row items-center mb-1.5">
                       <Text className="text-xs font-bold text-orange-500 w-5">{index}</Text>
-                      <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || '活动'}</Text>
-                      {isCompletedPlan && <Text className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded-md mr-1">计划完成</Text>}
-                      <Text className="text-xs text-gray-400">愉悦 {record.pleasure_score} · 重要 {record.importance_score}</Text>
+                      <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{record.activity || t('activity')}</Text>
+                      {isCompletedPlan && <Text className="text-[10px] text-green-700 bg-green-50 px-1.5 py-0.5 rounded-md mr-1">{t('completedPlan')}</Text>}
+                      <Text className="text-xs text-gray-400">{t('pleasureShort')} {record.pleasure_score} · {t('importanceShort')} {record.importance_score}</Text>
                     </View>
                   );
                 }) : (
-                  <Text className="text-xs text-gray-300 mb-1.5">暂无活动</Text>
+                  <Text className="text-xs text-gray-300 mb-1.5">{t('noActivities')}</Text>
                 )}
               </View>
             ))}
@@ -414,18 +426,18 @@ function S2ScatterCard({
       )}
       {includePlans && !loading && (
         <View className="border-t border-gray-100 pt-3 mt-1">
-          <Text className="text-xs font-semibold text-gray-500 mb-2">未完成的计划</Text>
+          <Text className="text-xs font-semibold text-gray-500 mb-2">{t('incompletePlans')}</Text>
           {incompletePlans.length > 0 ? incompletePlans.map(plan => (
             <View key={plan.id} className="flex-row items-center mb-1.5">
               <Text className="text-xs text-gray-600 flex-1" numberOfLines={1}>{plan.activity_name}</Text>
               <Text className="text-xs text-gray-400">{plan.scheduled_date}</Text>
             </View>
           )) : (
-            <Text className="text-xs text-gray-300 mb-1.5">这个范围内没有未完成的计划</Text>
+            <Text className="text-xs text-gray-300 mb-1.5">{t('noIncompletePlans')}</Text>
           )}
           {completedPlansWithoutPoint.length > 0 && (
             <Text className="text-xs text-gray-400 mt-2">
-              另有 {completedPlansWithoutPoint.length} 个已完成计划没有评分记录，暂时不显示在图上。
+              {t('completedPlansNoScore').replace('{count}', String(completedPlansWithoutPoint.length))}
             </Text>
           )}
         </View>
@@ -437,6 +449,7 @@ function S2ScatterCard({
 function S2DomainCard({
   userId, selected, onSelect, onSubmitMessage,
 }: { userId: string; selected: LifeDomain | null; onSelect: (d: LifeDomain) => void; onSubmitMessage: S2ActionMessage }) {
+  const { language, t } = useLanguage();
   const [domains, setDomains] = useState<LifeDomain[]>([]);
 
   useEffect(() => {
@@ -445,13 +458,16 @@ function S2DomainCard({
 
   const choose = (domain: LifeDomain) => {
     onSelect(domain);
-    onSubmitMessage(`我想先从「${domain.name}」这个生活领域开始`);
+    const displayName = translateDomainName(domain.name, language);
+    onSubmitMessage(language === 'en'
+      ? `I want to start with the "${displayName}" life domain`
+      : `我想先从「${domain.name}」这个生活领域开始`);
   };
 
   return (
     <View className="bg-white rounded-2xl border border-indigo-100 px-4 py-4 mb-3">
-      <Text className="text-xs font-semibold text-indigo-500 mb-1">选择一个生活领域</Text>
-      <Text className="text-xs text-gray-400 mb-3">先从一个方向开始就好，之后还可以继续补充。</Text>
+      <Text className="text-xs font-semibold text-indigo-500 mb-1">{t('chooseLifeDomain')}</Text>
+      <Text className="text-xs text-gray-400 mb-3">{t('chooseLifeDomainHint')}</Text>
       <View className="flex-row flex-wrap gap-2">
         {domains.map(d => {
           const active = selected?.id === d.id;
@@ -462,7 +478,7 @@ function S2DomainCard({
               className="px-3 py-2 rounded-xl border"
               style={{ backgroundColor: active ? '#6366f1' : '#fff', borderColor: active ? '#6366f1' : '#e5e7eb' }}
             >
-              <Text style={{ color: active ? '#fff' : '#4b5563' }} className="text-sm font-medium">{d.name}</Text>
+              <Text style={{ color: active ? '#fff' : '#4b5563' }} className="text-sm font-medium">{translateDomainName(d.name, language)}</Text>
             </TouchableOpacity>
           );
         })}
@@ -481,6 +497,7 @@ function S2ValueCard({
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
 }) {
+  const { language, t } = useLanguage();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -491,7 +508,9 @@ function S2ValueCard({
       const value = await api.createValue(domain.id, text.trim(), userId);
       onSaved(value);
       onProgressRefresh();
-      onSubmitMessage(`【已填写价值观】领域：${domain.name}，价值观：${text.trim()}`);
+      onSubmitMessage(language === 'en'
+        ? `[Value entered] Domain: ${translateDomainName(domain.name, language)}. Value: ${text.trim()}`
+        : `【已填写价值观】领域：${domain.name}，价值观：${text.trim()}`);
       setText('');
     } finally {
       setSaving(false);
@@ -500,11 +519,11 @@ function S2ValueCard({
 
   return (
     <View className="bg-white rounded-2xl border border-indigo-100 px-4 py-4 mb-3" style={{ opacity: domain ? 1 : 0.5 }}>
-      <Text className="text-xs font-semibold text-indigo-500 mb-1">写下这个领域里的价值观</Text>
-      <Text className="text-xs text-gray-400 mb-3">{domain ? `当前领域：${domain.name}` : '先选择一个生活领域'}</Text>
+      <Text className="text-xs font-semibold text-indigo-500 mb-1">{t('writeValue')}</Text>
+      <Text className="text-xs text-gray-400 mb-3">{domain ? `${t('currentDomain')}: ${translateDomainName(domain.name, language)}` : t('chooseDomainFirst')}</Text>
       {savedValue ? (
         <View className="bg-indigo-50 rounded-xl px-3 py-3">
-          <Text className="text-xs text-indigo-400 mb-1">已保存</Text>
+          <Text className="text-xs text-indigo-400 mb-1">{t('saved')}</Text>
           <Text className="text-sm text-gray-700">{savedValue.content}</Text>
         </View>
       ) : (
@@ -513,7 +532,7 @@ function S2ValueCard({
             value={text}
             onChangeText={setText}
             editable={!!domain && !saving}
-            placeholder="例如：照顾好自己的身体和状态"
+            placeholder={language === 'en' ? 'For example: taking care of my body and energy' : '例如：照顾好自己的身体和状态'}
             placeholderTextColor="#9ca3af"
             className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
           />
@@ -523,7 +542,7 @@ function S2ValueCard({
             className="w-full py-3 bg-indigo-500 rounded-xl items-center"
             style={{ opacity: (!domain || !text.trim() || saving) ? 0.4 : 1 }}
           >
-            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">保存价值观</Text>}
+            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">{t('saveValue')}</Text>}
           </TouchableOpacity>
         </>
       )}
@@ -542,6 +561,7 @@ function S2ActivityCard({
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
 }) {
+  const { language, t } = useLanguage();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -557,7 +577,9 @@ function S2ActivityCard({
       });
       onSaved(activity);
       onProgressRefresh();
-      onSubmitMessage(`【已填写活动】${text.trim()}（领域：${domain.name}）`);
+      onSubmitMessage(language === 'en'
+        ? `[Activity entered] ${text.trim()} (domain: ${translateDomainName(domain.name, language)})`
+        : `【已填写活动】${text.trim()}（领域：${domain.name}）`);
       setText('');
     } finally {
       setSaving(false);
@@ -566,11 +588,11 @@ function S2ActivityCard({
 
   return (
     <View className="bg-white rounded-2xl border border-orange-100 px-4 py-4 mb-3" style={{ opacity: value ? 1 : 0.5 }}>
-      <Text className="text-xs font-semibold text-orange-500 mb-1">添加一个可以开始的活动</Text>
-      <Text className="text-xs text-gray-400 mb-3">最好小到这周真的能做一次。</Text>
+      <Text className="text-xs font-semibold text-orange-500 mb-1">{t('addStartableActivity')}</Text>
+      <Text className="text-xs text-gray-400 mb-3">{t('startableActivityHint')}</Text>
       {savedActivity ? (
         <View className="bg-orange-50 rounded-xl px-3 py-3">
-          <Text className="text-xs text-orange-400 mb-1">已加入活动库</Text>
+          <Text className="text-xs text-orange-400 mb-1">{t('addedToLibrary')}</Text>
           <Text className="text-sm text-gray-700">{savedActivity.name}</Text>
         </View>
       ) : (
@@ -579,7 +601,7 @@ function S2ActivityCard({
             value={text}
             onChangeText={setText}
             editable={!!value && !saving}
-            placeholder="例如：周三晚上散步15分钟"
+            placeholder={language === 'en' ? 'For example: walk for 15 minutes on Wednesday evening' : '例如：周三晚上散步15分钟'}
             placeholderTextColor="#9ca3af"
             className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
           />
@@ -589,7 +611,7 @@ function S2ActivityCard({
             className="w-full py-3 bg-orange-500 rounded-xl items-center"
             style={{ opacity: (!value || !text.trim() || saving) ? 0.4 : 1 }}
           >
-            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">加入活动库</Text>}
+            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">{t('addToLibrary')}</Text>}
           </TouchableOpacity>
         </>
       )}
@@ -606,6 +628,7 @@ function S2InlineFlow({
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
 }) {
+  const { t } = useLanguage();
   const [selectedDomain, setSelectedDomain] = useState<LifeDomain | null>(null);
   const [savedValue, setSavedValue] = useState<Value | null>(null);
   const [savedActivity, setSavedActivity] = useState<Activity | null>(null);
@@ -646,8 +669,8 @@ function S2InlineFlow({
       )}
       {showSetupCards && savedActivity && (
         <View className="bg-green-50 rounded-2xl border border-green-100 px-4 py-3 mb-3">
-          <Text className="text-xs font-semibold text-green-600 mb-1">下一步</Text>
-          <Text className="text-xs text-gray-600 leading-relaxed">活动已经进活动库了。接下来可以回到主页点“计划活动”，把它安排到具体日期和时间里。</Text>
+          <Text className="text-xs font-semibold text-green-600 mb-1">{t('nextStep')}</Text>
+          <Text className="text-xs text-gray-600 leading-relaxed">{t('activityInLibraryNext')}</Text>
         </View>
       )}
     </View>
@@ -661,6 +684,7 @@ function S3InlineFlow({
   userId: string;
   phaseStep: number;
 }) {
+  const { t } = useLanguage();
   const showReviewCard = phaseStep <= 0;
 
   if (!showReviewCard) return null;
@@ -671,7 +695,7 @@ function S3InlineFlow({
         progress={progress}
         userId={userId}
         includePlans
-        title="本阶段活动与计划回顾"
+        title={t('currentPhaseReview')}
       />
     </View>
   );
@@ -703,9 +727,44 @@ const TRIGGER_PREVIEWS: Record<string, string> = {
 
 const CONVERSATION_TRIGGERS = new Set(['monitoring_troubleshoot']);
 
+function getIntentLabel(intent: string, language: AppLanguage, t: ReturnType<typeof useLanguage>['t']) {
+  const labels: Record<string, string> = {
+    'phase:intro': 'Week 1 · Intro',
+    'phase:setup': 'Week 2 · Values × Activities × Plans',
+    'phase:first_review': 'Week 3 · First review',
+    'phase:review_cycle': t('currentWeekReview'),
+    'trigger:monitoring_troubleshoot': 'Monitoring check-in',
+    'trigger:life_area_balance': 'Life domain balance',
+    'trigger:support_contract_review': 'Support review',
+    'trigger:values_review': 'Values review',
+    'trigger:first_plan_completed_celebration': 'First plan completed',
+    'trigger:plan_completed_7_celebration': '7 plans completed',
+  };
+  return language === 'en' ? (labels[intent] ?? intent) : (INTENT_LABELS[intent] ?? intent);
+}
+
+function getPhaseHeaderLabel(data: TreatmentProgressData, language: AppLanguage, t: ReturnType<typeof useLanguage>['t']) {
+  if (language !== 'en') return data.phase_label;
+  const intent = data.phase === 'review_cycle' ? 'phase:review_cycle' : `phase:${data.phase}`;
+  return getIntentLabel(intent, language, t);
+}
+
+function getTriggerPreview(trigger: string, language: AppLanguage) {
+  const previews: Record<string, string> = {
+    monitoring_troubleshoot: 'I have not seen records for a few days. What has been happening?',
+    life_area_balance: 'Recent activities are concentrated in one domain. Next time, try adding one activity from a neglected domain.',
+    support_contract_review: 'You have used the app for a while. It may be worth checking whether your supporters still fit, or whether to add someone new.',
+    values_review: 'It may help to revisit your values and activities from time to time, and update them if needed.',
+    first_plan_completed_celebration: 'You completed your first planned activity. You are starting to bring plans into real life.',
+    plan_completed_7_celebration: 'You have completed 7 planned activities. That persistence matters. You can look back and see what is easiest to start and what helps most.',
+  };
+  return language === 'en' ? (previews[trigger] ?? trigger) : (TRIGGER_PREVIEWS[trigger] ?? trigger);
+}
+
 function TreatmentProgressCard({
   data, userId, onPhaseChanged, onStartIntent,
 }: { data: TreatmentProgressData; userId: string; onPhaseChanged: () => void; onStartIntent: (intent: string) => void }) {
+  const { language, t } = useLanguage();
   const [showDev, setShowDev] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [pendingTrigger, setPendingTrigger] = useState<string | null>(null);
@@ -733,12 +792,12 @@ function TreatmentProgressCard({
   const isForever = data.phase === 'review_cycle';
 
   const summaryText = isForever
-    ? `第 ${data.review_cycle_count} 周 · 持续执行中`
+    ? language === 'en' ? `Week ${data.review_cycle_count} · ongoing` : `第 ${data.review_cycle_count} 周 · 持续执行中`
     : data.days_until_eligible > 0
-      ? `${doneCriteria}/${criteriaCount} 项完成 · 还差 ${data.days_until_eligible} 天`
+      ? language === 'en' ? `${doneCriteria}/${criteriaCount} done · ${data.days_until_eligible} days left` : `${doneCriteria}/${criteriaCount} 项完成 · 还差 ${data.days_until_eligible} 天`
       : data.criteria_met
-        ? '条件已达成，等待推进'
-        : `${doneCriteria}/${criteriaCount} 项完成`;
+        ? language === 'en' ? 'Ready to advance' : '条件已达成，等待推进'
+        : language === 'en' ? `${doneCriteria}/${criteriaCount} done` : `${doneCriteria}/${criteriaCount} 项完成`;
 
   return (
     <View className="mx-4 mt-2 mb-1 bg-white border border-orange-100 rounded-2xl overflow-hidden">
@@ -750,7 +809,7 @@ function TreatmentProgressCard({
         className="flex-row items-center px-4 py-2.5 gap-2"
       >
         <View className="w-2 h-2 rounded-full bg-orange-400" />
-        <Text className="flex-1 text-xs font-medium text-gray-700">{data.phase_label}</Text>
+        <Text className="flex-1 text-xs font-medium text-gray-700">{getPhaseHeaderLabel(data, language, t)}</Text>
         {data.active_trigger && (
           <View className="w-2 h-2 rounded-full bg-blue-400 mr-1" />
         )}
@@ -758,37 +817,39 @@ function TreatmentProgressCard({
       </TouchableOpacity>
 
       {/* Trigger preview */}
-      {data.active_trigger && TRIGGER_PREVIEWS[data.active_trigger] && (
+      {data.active_trigger && getTriggerPreview(data.active_trigger, language) && (
         <View className="px-4 pb-2.5 flex-row items-center gap-2">
           <Text className="text-xs text-blue-500 flex-1">
-            小暖：{TRIGGER_PREVIEWS[data.active_trigger]}
+            {language === 'en' ? 'Xiao Nuan' : '小暖'}: {getTriggerPreview(data.active_trigger, language)}
           </Text>
           {CONVERSATION_TRIGGERS.has(data.active_trigger) && (
             <TouchableOpacity
               onPress={() => onStartIntent(`trigger:${data.active_trigger}`)}
               className="px-3 py-1 bg-blue-500 rounded-lg"
             >
-              <Text className="text-xs text-white font-medium">开始聊</Text>
+              <Text className="text-xs text-white font-medium">{t('startChat')}</Text>
             </TouchableOpacity>
           )}
         </View>
       )}
       {!data.active_trigger && (data.recently_triggered ?? []).length > 0 && (
         <View className="px-4 pb-2.5">
-          <Text className="text-xs text-gray-400">✓ 今日话题已完成</Text>
+          <Text className="text-xs text-gray-400">{t('todayTopicDone')}</Text>
         </View>
       )}
 
       {/* Dev panel (long-press to reveal) */}
       {showDev && (
         <View className="px-4 py-3 bg-gray-50 border-t border-dashed border-gray-200 gap-2">
-          <Text className="text-[10px] text-gray-400 font-medium mb-1">🛠 开发者模式 · 切换阶段</Text>
+          <Text className="text-[10px] text-gray-400 font-medium mb-1">
+            {language === 'en' ? 'Developer mode · switch phase' : '🛠 开发者模式 · 切换阶段'}
+          </Text>
           <View className="flex-row flex-wrap gap-2">
             {[
               { label: 'Week 1',  phase: 'intro' },
               { label: 'Week 2',  phase: 'setup' },
               { label: 'Week 3',  phase: 'first_review' },
-              { label: '执行循环', phase: 'review_cycle' },
+              { label: language === 'en' ? 'Review cycle' : '执行循环', phase: 'review_cycle' },
             ].map(({ label, phase }) => (
               <TouchableOpacity
                 key={phase}
@@ -808,17 +869,19 @@ function TreatmentProgressCard({
               </TouchableOpacity>
             ))}
           </View>
-          {switching && <Text className="text-[10px] text-gray-400">切换中…</Text>}
+          {switching && <Text className="text-[10px] text-gray-400">{language === 'en' ? 'Switching...' : '切换中…'}</Text>}
 
-          <Text className="text-[10px] text-gray-400 font-medium mt-2 mb-1">触发消息 / 对话</Text>
+          <Text className="text-[10px] text-gray-400 font-medium mt-2 mb-1">
+            {language === 'en' ? 'Trigger message / chat' : '触发消息 / 对话'}
+          </Text>
           <View className="flex-row flex-wrap gap-2">
             {[
-              { label: '监测疏通',    trigger: 'monitoring_troubleshoot' },
-              { label: '领域平衡',    trigger: 'life_area_balance' },
-              { label: '支持者复习',  trigger: 'support_contract_review' },
-              { label: '价值观复习',  trigger: 'values_review' },
-              { label: '首次完成',    trigger: 'first_plan_completed_celebration' },
-              { label: '完成7次',     trigger: 'plan_completed_7_celebration' },
+              { label: language === 'en' ? 'Monitoring' : '监测疏通',    trigger: 'monitoring_troubleshoot' },
+              { label: language === 'en' ? 'Domain balance' : '领域平衡',    trigger: 'life_area_balance' },
+              { label: language === 'en' ? 'Support review' : '支持者复习',  trigger: 'support_contract_review' },
+              { label: language === 'en' ? 'Values review' : '价值观复习',  trigger: 'values_review' },
+              { label: language === 'en' ? 'First completed' : '首次完成',    trigger: 'first_plan_completed_celebration' },
+              { label: language === 'en' ? '7 completed' : '完成7次',     trigger: 'plan_completed_7_celebration' },
             ].map(({ label, trigger }) => (
               <TouchableOpacity
                 key={trigger}
@@ -838,7 +901,7 @@ function TreatmentProgressCard({
             ))}
           </View>
           {pendingTrigger && (
-            <Text className="text-[10px] text-blue-400">已设置：{pendingTrigger}</Text>
+            <Text className="text-[10px] text-blue-400">{language === 'en' ? 'Set: ' : '已设置：'}{pendingTrigger}</Text>
           )}
         </View>
       )}
@@ -850,6 +913,7 @@ function TreatmentProgressCard({
 function HistoryModal({
   visible, userId, onClose,
 }: { visible: boolean; userId: string; onClose: () => void }) {
+  const { language, t } = useLanguage();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selected, setSelected] = useState<ChatSession | null>(null);
   const [sessionMsgs, setSessionMsgs] = useState<ChatMessage[]>([]);
@@ -892,8 +956,8 @@ function HistoryModal({
           ) : null}
           <Text className="flex-1 font-semibold text-gray-800 text-base">
             {selected
-              ? (selected.title ?? formatDate(selected.created_at))
-              : '历史对话'}
+              ? (selected.title ?? formatDate(selected.created_at, language))
+              : t('chatHistory')}
           </Text>
           <TouchableOpacity onPress={onClose} className="p-2 -mr-2">
             <Text className="text-gray-400 text-xl">✕</Text>
@@ -912,7 +976,7 @@ function HistoryModal({
             contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
             ListEmptyComponent={
               <View className="items-center pt-16">
-                <Text className="text-gray-400 text-sm">这次对话没有消息记录</Text>
+                <Text className="text-gray-400 text-sm">{t('noMessagesInChat')}</Text>
               </View>
             }
             renderItem={({ item }) => <Bubble msg={item} />}
@@ -926,7 +990,7 @@ function HistoryModal({
             ListEmptyComponent={
               <View className="items-center pt-16">
                 <XiaoNuan size={56} />
-                <Text className="text-gray-400 text-sm mt-4">还没有历史对话</Text>
+                <Text className="text-gray-400 text-sm mt-4">{t('noChatHistory')}</Text>
               </View>
             }
             renderItem={({ item: s }) => (
@@ -935,10 +999,10 @@ function HistoryModal({
                 className="bg-gray-50 rounded-2xl px-4 py-4 mb-3 active:opacity-70"
               >
                 <Text className="font-medium text-gray-800 mb-1" numberOfLines={1}>
-                  {s.title ?? '对话'}
+                  {s.title ?? t('conversation')}
                 </Text>
                 <Text className="text-xs text-gray-400" numberOfLines={1}>
-                  {formatDate(s.created_at)}
+                  {formatDate(s.created_at, language)}
                   {s.preview ? `  ·  ${s.preview}` : ''}
                 </Text>
               </TouchableOpacity>
@@ -954,6 +1018,7 @@ function HistoryModal({
 export default function ChatbotScreen() {
   const router = useRouter();
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const { intent: intentParam } = useLocalSearchParams<{ intent?: string }>();
 
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
@@ -992,12 +1057,12 @@ export default function ChatbotScreen() {
     } catch (error) {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '网络出了点问题，稍后再试试？',
+        content: isAiAccessRequiredError(error) ? t('aiChatAccessMessage') : t('networkRetry'),
       }]);
     } finally {
       setLoading(false);
     }
-  }, [currentSessionId, userId]);
+  }, [currentSessionId, userId, t]);
 
   // ── Initialization ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1043,7 +1108,7 @@ export default function ChatbotScreen() {
           } catch (error) {
             setMessages([{
               role: 'assistant',
-              content: isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '网络出了点问题，稍后再试试？',
+              content: isAiAccessRequiredError(error) ? t('aiChatAccessMessage') : t('networkRetry'),
             }]);
           } finally {
             setLoading(false);
@@ -1087,13 +1152,13 @@ export default function ChatbotScreen() {
       } catch (error) {
         setMessages([{
           role: 'assistant',
-          content: isAiAccessRequiredError(error) ? AI_ACCESS_MESSAGE : '网络出了点问题，稍后再试试？',
+          content: isAiAccessRequiredError(error) ? t('aiChatAccessMessage') : t('networkRetry'),
         }]);
       } finally {
         setLoading(false);
       }
     } catch {
-      Alert.alert('提示', '无法创建新对话，请重试');
+      Alert.alert(t('tip'), t('createChatFailed'));
     }
   };
 
@@ -1119,11 +1184,11 @@ export default function ChatbotScreen() {
       setTreatmentProgress(progress);
 
     } catch {
-      Alert.alert('提示', '无法创建新对话，请重试');
+      Alert.alert(t('tip'), t('createChatFailed'));
     }
   };
 
-  const companionName = '小暖';
+  const companionName = language === 'en' ? 'Xiao Nuan' : '小暖';
   const allItems: (ChatMessage | 'typing')[] = loading ? [...messages, 'typing'] : messages;
   const phaseListHeader = (() => {
     if (currentIntent === 'phase:setup') {
@@ -1159,7 +1224,7 @@ export default function ChatbotScreen() {
             progress={treatmentProgress}
             userId={userId}
             includePlans
-            title="本周活动与计划回顾"
+            title={t('currentWeekReview')}
           />
         </View>
       );
@@ -1180,10 +1245,10 @@ export default function ChatbotScreen() {
           <Text className="font-semibold text-gray-800 text-sm">{companionName}</Text>
           {currentIntent ? (
             <Text className="text-xs text-blue-400" numberOfLines={1}>
-              {INTENT_LABELS[currentIntent] ?? currentIntent}
+              {getIntentLabel(currentIntent, language, t)}
             </Text>
           ) : (
-            <Text className="text-xs text-gray-400">行为激活伙伴</Text>
+            <Text className="text-xs text-gray-400">{t('behaviorActivationPartner')}</Text>
           )}
         </View>
         {/* History button */}
@@ -1191,14 +1256,14 @@ export default function ChatbotScreen() {
           onPress={() => setShowHistory(true)}
           className="px-3 py-1.5 rounded-xl bg-gray-100"
         >
-          <Text className="text-xs text-gray-500">历史</Text>
+          <Text className="text-xs text-gray-500">{t('history')}</Text>
         </TouchableOpacity>
         {/* New conversation button */}
         <TouchableOpacity
           onPress={handleNewConversation}
           className="px-3 py-1.5 rounded-xl bg-orange-100 ml-1"
         >
-          <Text className="text-xs text-orange-600 font-medium">新对话</Text>
+          <Text className="text-xs text-orange-600 font-medium">{t('newChat')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -1235,7 +1300,7 @@ export default function ChatbotScreen() {
             ListEmptyComponent={
               <View className="items-center pt-16">
                 <XiaoNuan size={64} />
-                <Text className="text-gray-400 text-sm mt-4">嗨，有什么想聊的吗？</Text>
+                <Text className="text-gray-400 text-sm mt-4">{t('chatEmptyPrompt')}</Text>
               </View>
             }
             renderItem={({ item }) =>
@@ -1257,7 +1322,7 @@ export default function ChatbotScreen() {
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder="说说你的想法…"
+              placeholder={t('chatPlaceholder')}
               placeholderTextColor="#9ca3af"
               multiline
               className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-800"

@@ -10,6 +10,7 @@ import {
   useAudioRecorder,
 } from 'expo-audio';
 import { api, isAiAccessRequiredError } from '../src/api';
+import { useLanguage } from '../src/i18n';
 
 const IOS_WAV_PRESET = {
   ...RecordingPresets.HIGH_QUALITY,
@@ -71,6 +72,7 @@ function formatTime(seconds: number) {
 }
 
 export default function VoiceRecordButton({ userId, onTranscript }: Props) {
+  const { t } = useLanguage();
   const [state, setState] = useState<RecordState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -112,7 +114,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
   const startRecording = async () => {
     const hasPermission = await ensureRecordingPermission();
     if (!hasPermission) {
-      setErrorMsg('需要麦克风权限才能录音');
+      setErrorMsg(t('microphonePermission'));
       setState('error');
       return;
     }
@@ -133,7 +135,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
     const uri = audioRecorder.uri;
 
     if (!uri) {
-      setErrorMsg('录音失败，请重试');
+      setErrorMsg(t('recordingFailed'));
       setState('error');
       return;
     }
@@ -141,13 +143,13 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
     try {
       const result = await api.uploadAudio(uri, userId);
       if (result.whisper_error) {
-        setErrorMsg(`转写失败：${result.whisper_error}`);
+        setErrorMsg(`${t('transcriptionFailed')}${result.whisper_error}`);
         setState('error');
         return;
       }
 
       if (!result.transcript.trim()) {
-        setErrorMsg('没有识别到语音内容，请靠近麦克风后重试');
+        setErrorMsg(t('noSpeechDetected'));
         setState('error');
         return;
       }
@@ -156,9 +158,9 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
       setState('idle');
     } catch (error) {
       const message = isAiAccessRequiredError(error)
-        ? '需要先解锁或开通会员，才能使用语音转写。'
-        : error instanceof Error ? error.message : '未知错误';
-      setErrorMsg(`上传失败：${message}`);
+        ? t('voiceAccessMessage')
+        : error instanceof Error ? error.message : t('unknownError');
+      setErrorMsg(`${t('uploadFailed')}${message}`);
       setState('error');
     }
   };
@@ -174,7 +176,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
         setErrorMsg('');
       }
     } catch {
-      setErrorMsg('录音出错，请重试');
+      setErrorMsg(t('recordingError'));
       setState('error');
     }
   };
@@ -184,7 +186,7 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
       <View className="items-center py-3">
         <View className="flex-row items-center gap-2">
           <ActivityIndicator size="small" color="#f97316" />
-          <Text className="text-sm text-gray-500">语音转写中...</Text>
+          <Text className="text-sm text-gray-500">{t('transcribingVoice')}</Text>
         </View>
       </View>
     );
@@ -207,8 +209,8 @@ export default function VoiceRecordButton({ userId, onTranscript }: Props) {
             {formatTime(seconds)}
           </Text>
         )}
-        {state === 'idle' && <Text className="text-xs text-gray-400 mt-1.5">语音输入</Text>}
-        {state === 'error' && <Text className="text-xs text-orange-500 mt-1.5">点击重试</Text>}
+        {state === 'idle' && <Text className="text-xs text-gray-400 mt-1.5">{t('voiceInput')}</Text>}
+        {state === 'error' && <Text className="text-xs text-orange-500 mt-1.5">{t('tapRetry')}</Text>}
       </TouchableOpacity>
 
       {errorMsg ? <Text className="text-xs text-red-400 mt-1 text-center px-4">{errorMsg}</Text> : null}

@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { api } from '../../src/api';
+import { translateDomainName, useLanguage } from '../../src/i18n';
 import { useUserId } from '../../src/userStore';
 import type { LifeDomain, Value, Activity, Supporter } from '../../src/types';
 
@@ -14,6 +15,7 @@ function AddValueModal({
   visible, domainId, onClose, onAdded,
 }: { visible: boolean; domainId: string; onClose: () => void; onAdded: () => void }) {
   const userId = useUserId();
+  const { t } = useLanguage();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const submit = async () => {
@@ -26,16 +28,16 @@ function AddValueModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1" onPress={onClose} />
       <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
-        <Text className="text-base font-bold text-gray-800 mb-4">添加价值观</Text>
+        <Text className="text-base font-bold text-gray-800 mb-4">{t('addValue')}</Text>
         <TextInput
           value={text} onChangeText={setText} autoFocus
-          placeholder="例如：做一个关心家人的人"
+          placeholder={t('valuePlaceholder')}
           placeholderTextColor="#9ca3af"
           className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
         />
         <TouchableOpacity onPress={submit} disabled={!text.trim() || saving}
           className="w-full py-4 bg-orange-500 rounded-2xl items-center">
-          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">添加</Text>}
+          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">{t('add')}</Text>}
         </TouchableOpacity>
       </View>
     </Modal>
@@ -47,6 +49,7 @@ function AddActivityModal({
   visible, domainId, valueId, onClose, onAdded,
 }: { visible: boolean; domainId: string; valueId: string | null; onClose: () => void; onAdded: () => void }) {
   const userId = useUserId();
+  const { t } = useLanguage();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const submit = async () => {
@@ -61,16 +64,16 @@ function AddActivityModal({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1" onPress={onClose} />
       <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
-        <Text className="text-base font-bold text-gray-800 mb-4">添加活动</Text>
+        <Text className="text-base font-bold text-gray-800 mb-4">{t('addActivity')}</Text>
         <TextInput
           value={text} onChangeText={setText} autoFocus
-          placeholder="例如：每周二晚陪妈妈打一通电话"
+          placeholder={t('libraryActivityPlaceholder')}
           placeholderTextColor="#9ca3af"
           className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-4"
         />
         <TouchableOpacity onPress={submit} disabled={!text.trim() || saving}
           className="w-full py-4 bg-indigo-500 rounded-2xl items-center">
-          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">添加</Text>}
+          {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">{t('add')}</Text>}
         </TouchableOpacity>
       </View>
     </Modal>
@@ -81,6 +84,7 @@ function AddActivityModal({
 export default function ActivitiesScreen() {
   const router = useRouter();
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [domains, setDomains] = useState<LifeDomain[]>([]);
   const [values, setValues] = useState<Value[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -111,9 +115,9 @@ export default function ActivitiesScreen() {
   return (
     <SafeAreaView className="flex-1 bg-orange-50">
       <ScrollView className="flex-1 px-4" showsVerticalScrollIndicator={false}>
-        <Text className="text-xl font-bold text-gray-800 mt-6 mb-4">活动库</Text>
+        <Text className="text-xl font-bold text-gray-800 mt-6 mb-4">{t('activitiesTitle')}</Text>
         <Text className="text-sm text-gray-500 mb-6 leading-relaxed">
-          从你在乎的事出发，找到有意义的活动
+          {t('activitiesSubtitle')}
         </Text>
 
         {domains.map(domain => {
@@ -126,7 +130,7 @@ export default function ActivitiesScreen() {
                 className="flex-row items-center justify-between px-4 py-4"
               >
                 <View className="flex-1">
-                  <Text className="font-semibold text-gray-800">{domain.name}</Text>
+                  <Text className="font-semibold text-gray-800">{translateDomainName(domain.name, language)}</Text>
                   {domain.description && (
                     <Text className="text-xs text-gray-400 mt-0.5">{domain.description}</Text>
                   )}
@@ -150,7 +154,7 @@ export default function ActivitiesScreen() {
                     onPress={() => setAddActivityFor({ domainId: domain.id, valueId: null })}
                     className="flex-row items-center mt-3 mb-1"
                   >
-                    <Text className="text-xs text-orange-500">+ 添加活动</Text>
+                    <Text className="text-xs text-orange-500">+ {t('addActivity')}</Text>
                   </TouchableOpacity>
                   {domainValues.map(value => {
                     const valueActs = activities.filter(a => a.value_id === value.id);
@@ -160,9 +164,9 @@ export default function ActivitiesScreen() {
                           <View className="flex-1 mr-2">
                             <Text className="text-sm font-medium text-indigo-700">💡 {value.content}</Text>
                           </View>
-                          <TouchableOpacity onPress={() => Alert.alert('确认删除', '删除这个价值观？', [
-                            { text: '取消', style: 'cancel' },
-                            { text: '删除', style: 'destructive', onPress: () => api.deleteValue(value.id).then(load) },
+                          <TouchableOpacity onPress={() => Alert.alert(t('confirmDelete'), t('deleteValueQuestion'), [
+                            { text: t('cancel'), style: 'cancel' },
+                            { text: t('delete'), style: 'destructive', onPress: () => api.deleteValue(value.id).then(load) },
                           ])}>
                             <Text className="text-gray-300 text-sm">✕</Text>
                           </TouchableOpacity>
@@ -180,7 +184,7 @@ export default function ActivitiesScreen() {
                           onPress={() => setAddActivityFor({ domainId: domain.id, valueId: value.id })}
                           className="flex-row items-center mt-2 ml-3"
                         >
-                          <Text className="text-xs text-orange-500">+ 添加活动</Text>
+                          <Text className="text-xs text-orange-500">+ {t('addActivity')}</Text>
                         </TouchableOpacity>
                       </View>
                     );
@@ -189,7 +193,7 @@ export default function ActivitiesScreen() {
                     onPress={() => setAddValueFor(domain.id)}
                     className="mt-4 py-2 border border-dashed border-indigo-300 rounded-xl items-center"
                   >
-                    <Text className="text-xs text-indigo-500">+ 添加价值观</Text>
+                    <Text className="text-xs text-indigo-500">+ {t('addValue')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -202,11 +206,11 @@ export default function ActivitiesScreen() {
           className="bg-white rounded-2xl px-4 py-4 mt-2 mb-3 shadow-sm"
         >
           <View className="flex-row items-center justify-between mb-1">
-            <Text className="font-semibold text-gray-800">我的支持者</Text>
-            <Text className="text-gray-400 text-sm">管理 ›</Text>
+            <Text className="font-semibold text-gray-800">{t('mySupporters')}</Text>
+            <Text className="text-gray-400 text-sm">{t('manage')}</Text>
           </View>
           {supporters.length === 0 ? (
-            <Text className="text-xs text-gray-400">添加家人或朋友，在规划活动时邀请他们支持你</Text>
+            <Text className="text-xs text-gray-400">{t('supportersHint')}</Text>
           ) : (
             <View className="flex-row flex-wrap gap-2 mt-1">
               {supporters.map(s => (

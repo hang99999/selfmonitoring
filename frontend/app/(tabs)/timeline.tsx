@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { api, isAiAccessRequiredError } from '../../src/api';
+import { AppLanguage, useLanguage } from '../../src/i18n';
 import { useUserId } from '../../src/userStore';
 import type { MoodRecord, PlannedActivity, PlannedActivitySupporter } from '../../src/types';
 import RecordModal from '../../components/RecordModal';
@@ -14,7 +15,10 @@ function toDateStr(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function formatDate(date: Date): string {
+function formatDate(date: Date, language: AppLanguage): string {
+  if (language === 'en') {
+    return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  }
   const month = date.getMonth() + 1;
   const day = date.getDate();
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -65,6 +69,7 @@ function CompleteModal({ item, onDone, onCancel }: {
   onDone: (pleasure: number, importance: number) => Promise<void>;
   onCancel: () => void;
 }) {
+  const { language, t } = useLanguage();
   const [pleasure, setPleasure] = useState(5);
   const [importance, setImportance] = useState(5);
   const [loading, setLoading] = useState(false);
@@ -79,21 +84,21 @@ function CompleteModal({ item, onDone, onCancel }: {
     <Modal visible animationType="slide" transparent onRequestClose={onCancel}>
       <View className="flex-1 justify-end bg-black/40">
         <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
-          <Text className="text-lg font-bold text-gray-800 mb-1">完成活动</Text>
+          <Text className="text-lg font-bold text-gray-800 mb-1">{t('completeActivity')}</Text>
           <Text className="text-sm text-gray-400 mb-5">
-            太棒了！为「<Text className="text-gray-700 font-medium">{item.activity_name}</Text>」评个分吧
+            {language === 'en' ? 'Nice work. Rate ' : '太棒了！为「'}<Text className="text-gray-700 font-medium">{item.activity_name}</Text>{language === 'en' ? '.' : '」评个分吧'}
           </Text>
-          <ScoreRow label="愉悦度（有多享受？）" value={pleasure} onChange={setPleasure} activeColor="#f97316" />
-          <ScoreRow label="重要性（对你有多重要？）" value={importance} onChange={setImportance} activeColor="#6366f1" />
+          <ScoreRow label={t('pleasureLabel')} value={pleasure} onChange={setPleasure} activeColor="#f97316" />
+          <ScoreRow label={t('importanceLabel')} value={importance} onChange={setImportance} activeColor="#6366f1" />
           <TouchableOpacity
             onPress={submit}
             disabled={loading}
             className="w-full py-4 bg-orange-500 rounded-2xl items-center mt-2"
           >
-            {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">确认完成</Text>}
+            {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">{t('confirmComplete')}</Text>}
           </TouchableOpacity>
           <TouchableOpacity onPress={onCancel} className="mt-3 items-center">
-            <Text className="text-gray-400 text-sm">取消</Text>
+            <Text className="text-gray-400 text-sm">{t('cancel')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -110,6 +115,7 @@ function IncompleteModal({ item, onClose, onReload }: {
   onClose: () => void;
   onReload: () => void;
 }) {
+  const { language, t } = useLanguage();
   const [step, setStep] = useState<IncompleteStep>('menu');
   const [steps, setSteps] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -119,7 +125,12 @@ function IncompleteModal({ item, onClose, onReload }: {
     const d = new Date(); d.setDate(d.getDate() + i + 1);
     const str = toDateStr(d);
     const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-    return { date: str, label: `${d.getMonth() + 1}/${d.getDate()} 周${weekDays[d.getDay()]}` };
+    return {
+      date: str,
+      label: language === 'en'
+        ? d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', weekday: 'short' })
+        : `${d.getMonth() + 1}/${d.getDate()} 周${weekDays[d.getDay()]}`,
+    };
   });
 
   const handleBreakdown = async () => {
@@ -129,9 +140,11 @@ function IncompleteModal({ item, onClose, onReload }: {
       setSteps(res.steps || []);
     } catch (error) {
       if (isAiAccessRequiredError(error)) {
-        setSteps(['这个 AI 拆解功能需要先解锁或开通会员。']);
+        setSteps([t('aiRecordAccessRequired')]);
       } else {
-        setSteps(['先做3次深呼吸，放松一下', `把"${item.activity_name}"想成只做1分钟`, '先开始那1分钟，完成再决定下一步']);
+        setSteps(language === 'en'
+          ? ['Take 3 slow breaths first', `Think of "${item.activity_name}" as only 1 minute`, 'Start with that 1 minute, then decide the next step']
+          : ['先做3次深呼吸，放松一下', `把"${item.activity_name}"想成只做1分钟`, '先开始那1分钟，完成再决定下一步']);
       }
     } finally {
       setLoading(false);
@@ -157,25 +170,25 @@ function IncompleteModal({ item, onClose, onReload }: {
         <View className="bg-white rounded-t-3xl px-6 pt-6 pb-10">
           {step === 'menu' && (
             <>
-              <Text className="text-lg font-bold text-gray-800 mb-1">未完成</Text>
+              <Text className="text-lg font-bold text-gray-800 mb-1">{t('incomplete')}</Text>
               <Text className="text-sm text-gray-400 mb-5">
-                「<Text className="text-gray-700 font-medium">{item.activity_name}</Text>」怎么了？
+                {language === 'en' ? 'What happened with ' : '「'}<Text className="text-gray-700 font-medium">{item.activity_name}</Text>{language === 'en' ? '?' : '」怎么了？'}
               </Text>
               <TouchableOpacity onPress={handleBreakdown} className="w-full py-4 bg-indigo-50 rounded-2xl items-center mb-3">
-                <Text className="text-indigo-600 font-semibold">🧩 帮我拆分成小步骤</Text>
+                <Text className="text-indigo-600 font-semibold">{t('breakdownSmallSteps')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setStep('reschedule')} className="w-full py-4 bg-gray-50 rounded-2xl items-center mb-3">
-                <Text className="text-gray-600 font-semibold">📅 改到其他日期</Text>
+                <Text className="text-gray-600 font-semibold">{t('reschedule')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={onClose} className="mt-1 items-center">
-                <Text className="text-gray-400 text-sm">取消</Text>
+                <Text className="text-gray-400 text-sm">{t('cancel')}</Text>
               </TouchableOpacity>
             </>
           )}
 
           {step === 'breakdown' && (
             <>
-              <Text className="text-lg font-bold text-gray-800 mb-4">拆分步骤</Text>
+              <Text className="text-lg font-bold text-gray-800 mb-4">{t('breakdownSteps')}</Text>
               {loading
                 ? <ActivityIndicator color="#f97316" />
                 : steps.map((s, i) => (
@@ -188,14 +201,14 @@ function IncompleteModal({ item, onClose, onReload }: {
                 ))
               }
               <TouchableOpacity onPress={onClose} className="mt-4 w-full py-4 bg-orange-500 rounded-2xl items-center">
-                <Text className="text-white font-semibold">好的，我来试试</Text>
+                <Text className="text-white font-semibold">{t('tryThis')}</Text>
               </TouchableOpacity>
             </>
           )}
 
           {step === 'reschedule' && (
             <>
-              <Text className="text-lg font-bold text-gray-800 mb-4">改期</Text>
+              <Text className="text-lg font-bold text-gray-800 mb-4">{t('rescheduleTitle')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
                 <View className="flex-row gap-2">
                   {rescheduleDays.map(({ date, label }) => (
@@ -215,10 +228,10 @@ function IncompleteModal({ item, onClose, onReload }: {
                 className="w-full py-4 bg-indigo-500 rounded-2xl items-center"
                 style={{ opacity: !rescheduleDate ? 0.4 : 1 }}
               >
-                {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">确认改期</Text>}
+                {loading ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold">{t('confirmReschedule')}</Text>}
               </TouchableOpacity>
               <TouchableOpacity onPress={() => setStep('menu')} className="mt-3 items-center">
-                <Text className="text-gray-400 text-sm">返回</Text>
+                <Text className="text-gray-400 text-sm">{t('back')}</Text>
               </TouchableOpacity>
             </>
           )}
@@ -232,6 +245,7 @@ function IncompleteModal({ item, onClose, onReload }: {
 
 export default function TimelineScreen() {
   const userId = useUserId();
+  const { language, t } = useLanguage();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [records, setRecords] = useState<MoodRecord[]>([]);
   const [planned, setPlanned] = useState<PlannedActivity[]>([]);
@@ -324,10 +338,10 @@ export default function TimelineScreen() {
       reload();
     } catch (error) {
       Alert.alert(
-        '提示',
+        t('tip'),
         isAiAccessRequiredError(error)
-          ? '需要先解锁或开通会员，才能使用 AI 记录解析。'
-          : '提交失败，请稍后重试',
+          ? t('aiRecordAccessRequired')
+          : t('submitFailedLater'),
       );
     }
   };
@@ -345,9 +359,9 @@ export default function TimelineScreen() {
   };
 
   const handleDelete = (p: PlannedActivity) => {
-    Alert.alert('删除计划', `删除「${p.activity_name}」？`, [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive', onPress: () => api.deletePlanned(p.id).then(reload) },
+    Alert.alert(t('deletePlan'), language === 'en' ? `Delete "${p.activity_name}"?` : `删除「${p.activity_name}」？`, [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('delete'), style: 'destructive', onPress: () => api.deletePlanned(p.id).then(reload) },
     ]);
   };
 
@@ -363,9 +377,9 @@ export default function TimelineScreen() {
         </TouchableOpacity>
 
         <View className="items-center">
-          <Text className="text-base font-bold text-gray-800">{formatDate(selectedDate)}</Text>
-          {isToday && <Text className="text-xs text-orange-500 font-medium">今天</Text>}
-          {isFuture && <Text className="text-xs text-indigo-500 font-medium">计划日</Text>}
+          <Text className="text-base font-bold text-gray-800">{formatDate(selectedDate, language)}</Text>
+          {isToday && <Text className="text-xs text-orange-500 font-medium">{t('today')}</Text>}
+          {isFuture && <Text className="text-xs text-indigo-500 font-medium">{t('plannedDay')}</Text>}
         </View>
 
         <TouchableOpacity
@@ -386,10 +400,10 @@ export default function TimelineScreen() {
         <View className="flex-1 items-center justify-center">
           <Text className="text-4xl mb-3">📅</Text>
           <Text className="text-gray-500 text-sm">
-            {isFuture ? '还没有计划的活动' : '这一天还没有记录'}
+            {isFuture ? t('noPlannedActivities') : t('noRecordsForDay')}
           </Text>
           <Text className="text-gray-400 text-xs mt-1">
-            {isFuture ? '回到主页点「计划活动」来安排' : '回到主页开始记录'}
+            {isFuture ? t('planFromHome') : t('recordFromHome')}
           </Text>
         </View>
       )}
@@ -399,7 +413,7 @@ export default function TimelineScreen() {
           {/* All-day planned */}
           {allDayPlanned.length > 0 && (
             <View className="mb-4 mt-3">
-              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">全天计划</Text>
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">{t('allDayPlans')}</Text>
               {allDayPlanned.map(p => (
                 <PlannedCard key={p.id} item={p} isEditable={isEditable} supporters={supportersByActivity[p.id] ?? []} onTap={() => handlePlannedTap(p)} onDelete={() => handleDelete(p)} />
               ))}
@@ -429,12 +443,12 @@ export default function TimelineScreen() {
                   <View className="flex-1 border-l border-orange-200 pl-3 pb-2">
                     {recs.map(r => (
                       <View key={r.id} className="bg-white rounded-xl px-3 py-2 mb-1 shadow-sm border-l-4 border-orange-400">
-                        <Text className="text-sm font-medium text-gray-700">{r.activity || '活动记录'}</Text>
+                        <Text className="text-sm font-medium text-gray-700">{r.activity || t('activityRecord')}</Text>
                         {r.thought ? <Text className="text-xs text-gray-400 mt-0.5">{r.thought}</Text> : null}
                         {(r.pleasure_score || r.importance_score) ? (
                           <View className="flex-row gap-3 mt-1">
-                            {r.pleasure_score ? <Text className="text-xs text-orange-500">愉悦 {r.pleasure_score}</Text> : null}
-                            {r.importance_score ? <Text className="text-xs text-indigo-500">重要 {r.importance_score}</Text> : null}
+                            {r.pleasure_score ? <Text className="text-xs text-orange-500">{t('pleasureShort')} {r.pleasure_score}</Text> : null}
+                            {r.importance_score ? <Text className="text-xs text-indigo-500">{t('importanceShort')} {r.importance_score}</Text> : null}
                           </View>
                         ) : null}
                       </View>
@@ -493,6 +507,7 @@ function PlannedCard({ item, isEditable, supporters, onTap, onDelete }: {
   supporters: PlannedActivitySupporter[];
   onTap: () => void; onDelete: () => void;
 }) {
+  const { t } = useLanguage();
   const isPastDue = !item.completed && !isEditable;
   return (
     <TouchableOpacity
@@ -512,7 +527,7 @@ function PlannedCard({ item, isEditable, supporters, onTap, onDelete }: {
         <View className="flex-row items-center gap-2">
           <View className={`px-2 py-0.5 rounded-full ${item.completed ? 'bg-green-100' : isPastDue ? 'bg-red-100' : 'bg-indigo-100'}`}>
             <Text className={`text-xs font-medium ${item.completed ? 'text-green-700' : isPastDue ? 'text-red-600' : 'text-indigo-700'}`}>
-              {item.completed ? '✅ 完成' : isPastDue ? '⚠️ 未完成' : '⏳ 待完成'}
+              {item.completed ? t('completedStatus') : isPastDue ? t('incompleteStatus') : t('pendingStatus')}
             </Text>
           </View>
           {!item.completed && (
@@ -526,7 +541,7 @@ function PlannedCard({ item, isEditable, supporters, onTap, onDelete }: {
         <View className="flex-row flex-wrap gap-1 mt-1.5">
           {supporters.map(s => (
             <View key={s.id} className="bg-orange-100 px-2 py-0.5 rounded-full">
-              <Text className="text-xs text-orange-600">{s.supporter_name ?? '支持者'}</Text>
+              <Text className="text-xs text-orange-600">{s.supporter_name ?? t('supporter')}</Text>
             </View>
           ))}
         </View>
