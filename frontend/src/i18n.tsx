@@ -573,7 +573,6 @@ export async function setStoredLanguage(language: AppLanguage): Promise<void> {
   currentLanguage = language;
   languageHydrated = true;
   await AsyncStorage.setItem(LANGUAGE_KEY, language);
-  notifyLanguageListeners();
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {

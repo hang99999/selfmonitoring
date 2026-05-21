@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert,
+  ScrollView, ActivityIndicator, Alert, DevSettings,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -54,9 +54,25 @@ export default function ProfileScreen() {
 
   const handleLanguageChange = async (nextLanguage: AppLanguage) => {
     if (nextLanguage === selectedLanguage) return;
-    setSelectedLanguage(nextLanguage);
     await setLanguage(nextLanguage);
-    api.setLanguage(userId, nextLanguage).catch(() => {});
+    await api.setLanguage(userId, nextLanguage).catch(() => {});
+
+    const copy = nextLanguage === 'en'
+      ? {
+          title: 'Language changed',
+          restartMessage: 'Please close and reopen the app to apply English.',
+        }
+      : {
+          title: '语言已切换',
+          restartMessage: '请关闭并重新打开 App，以应用中文。',
+        };
+
+    if (__DEV__) {
+      DevSettings.reload();
+    } else {
+      setSelectedLanguage(nextLanguage);
+      Alert.alert(copy.title, copy.restartMessage);
+    }
   };
 
   return (
