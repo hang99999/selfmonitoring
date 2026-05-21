@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 
 export type AppLanguage = 'zh' | 'en';
 
@@ -544,54 +544,59 @@ interface LanguageContextValue {
   t: (key: StringKey) => string;
 }
 
-const LanguageContext = createContext<LanguageContextValue | null>(null);
+let currentLanguage: AppLanguage = 'zh';
+let languageHydrated = false;
+const languageListeners = new Set<(language: AppLanguage) => void>();
+
+function notifyLanguageListeners() {
+  languageListeners.forEach(listener => listener(currentLanguage));
+}
+
+export async function hydrateLanguage() {
+  if (languageHydrated) return currentLanguage;
+  currentLanguage = normalizeLanguage(await AsyncStorage.getItem(LANGUAGE_KEY));
+  languageHydrated = true;
+  notifyLanguageListeners();
+  return currentLanguage;
+}
 
 export function normalizeLanguage(value: string | null | undefined): AppLanguage {
   return value === 'en' ? 'en' : 'zh';
 }
 
 export async function getStoredLanguage(): Promise<AppLanguage> {
-  return normalizeLanguage(await AsyncStorage.getItem(LANGUAGE_KEY));
+  if (languageHydrated) return currentLanguage;
+  return hydrateLanguage();
 }
 
 export async function setStoredLanguage(language: AppLanguage): Promise<void> {
+  currentLanguage = language;
+  languageHydrated = true;
   await AsyncStorage.setItem(LANGUAGE_KEY, language);
+  notifyLanguageListeners();
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<AppLanguage | null>(null);
-
-  useEffect(() => {
-    getStoredLanguage().then(setLanguageState);
-  }, []);
-
-  const value = useMemo<LanguageContextValue | null>(() => {
-    if (!language) return null;
-    return {
-      language,
-      setLanguage: async (nextLanguage: AppLanguage) => {
-        await setStoredLanguage(nextLanguage);
-        setLanguageState(nextLanguage);
-      },
-      t: (key: StringKey) => STRINGS[language][key],
-    };
-  }, [language]);
-
-  if (!value) return null;
-
-  return (
-    <LanguageContext.Provider value={value}>
-      {children}
-    </LanguageContext.Provider>
-  );
+  return <>{children}</>;
 }
 
-export function useLanguage() {
-  const ctx = useContext(LanguageContext);
-  if (!ctx) {
-    throw new Error('useLanguage must be used inside LanguageProvider');
-  }
-  return ctx;
+export function useLanguage(): LanguageContextValue {
+  const [language, setLanguageState] = useState<AppLanguage>(currentLanguage);
+
+  useEffect(() => {
+    if (language !== currentLanguage) setLanguageState(currentLanguage);
+    const listener = (lang: AppLanguage) => setLanguageState(lang);
+    languageListeners.add(listener);
+    return () => { languageListeners.delete(listener); };
+  }, []);
+
+  return useMemo(() => ({
+    language,
+    setLanguage: async (nextLanguage: AppLanguage) => {
+      await setStoredLanguage(nextLanguage);
+    },
+    t: (key: StringKey) => STRINGS[language][key],
+  }), [language]);
 }
 
 const DOMAIN_NAME_TRANSLATIONS: Record<string, Record<AppLanguage, string>> = {
@@ -603,6 +608,19 @@ const DOMAIN_NAME_TRANSLATIONS: Record<string, Record<AppLanguage, string>> = {
   '其他': { zh: '其他', en: 'Other' },
 };
 
+const DOMAIN_DESCRIPTION_TRANSLATIONS: Record<string, Record<AppLanguage, string>> = {
+  '家人、伴侣、朋友等亲近关系': { zh: '家人、伴侣、朋友等亲近关系', en: 'Close relationships with family, partners, and friends' },
+  '学习、工作、职业发展': { zh: '学习、工作、职业发展', en: 'Study, work, and career development' },
+  '爱好、娱乐、创意活动': { zh: '爱好、娱乐、创意活动', en: 'Hobbies, recreation, and creative activities' },
+  '身体健康、心理健康、精神成长': { zh: '身体健康、心理健康、精神成长', en: 'Physical health, mental health, and personal growth' },
+  '家务、生活管理、社会责任': { zh: '家务、生活管理、社会责任', en: 'Housework, life management, and social responsibilities' },
+};
+
 export function translateDomainName(name: string, language: AppLanguage): string {
   return DOMAIN_NAME_TRANSLATIONS[name]?.[language] ?? name;
+}
+
+export function translateDomainDescription(description: string | null | undefined, language: AppLanguage): string {
+  if (!description) return '';
+  return DOMAIN_DESCRIPTION_TRANSLATIONS[description]?.[language] ?? description;
 }

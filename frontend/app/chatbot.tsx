@@ -5,7 +5,7 @@ import {
   ActivityIndicator, Alert, useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from 'react-native-svg';
 import XiaoNuan from '../components/XiaoNuan';
 import RecordModal from '../components/RecordModal';
@@ -1016,7 +1016,6 @@ function HistoryModal({
 
 // ── Main Chatbot ──────────────────────────────────────────────────────────────
 export default function ChatbotScreen() {
-  const router = useRouter();
   const userId = useUserId();
   const { language, t } = useLanguage();
   const { intent: intentParam } = useLocalSearchParams<{ intent?: string }>();

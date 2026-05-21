@@ -4,9 +4,9 @@ import {
   Modal, Pressable, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { api } from '../../src/api';
-import { translateDomainName, useLanguage } from '../../src/i18n';
+import { translateDomainDescription, translateDomainName, useLanguage } from '../../src/i18n';
 import { useUserId } from '../../src/userStore';
 import type { LifeDomain, Value, Activity, Supporter } from '../../src/types';
 
@@ -82,7 +82,6 @@ function AddActivityModal({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ActivitiesScreen() {
-  const router = useRouter();
   const userId = useUserId();
   const { language, t } = useLanguage();
   const [domains, setDomains] = useState<LifeDomain[]>([]);
@@ -132,7 +131,7 @@ export default function ActivitiesScreen() {
                 <View className="flex-1">
                   <Text className="font-semibold text-gray-800">{translateDomainName(domain.name, language)}</Text>
                   {domain.description && (
-                    <Text className="text-xs text-gray-400 mt-0.5">{domain.description}</Text>
+                    <Text className="text-xs text-gray-400 mt-0.5">{translateDomainDescription(domain.description, language)}</Text>
                   )}
                 </View>
                 <Text className="text-gray-400 text-lg">{isOpen ? '▾' : '▸'}</Text>

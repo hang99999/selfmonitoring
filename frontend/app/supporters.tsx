@@ -4,7 +4,7 @@ import {
   Modal, Pressable, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { api } from '../src/api';
 import { useLanguage } from '../src/i18n';
 import { useUserId } from '../src/userStore';
@@ -138,7 +138,6 @@ function SupporterFormModal({
 }
 
 export default function SupportersScreen() {
-  const router = useRouter();
   const userId = useUserId();
   const { language, t } = useLanguage();
   const [supporters, setSupporters] = useState<Supporter[]>([]);

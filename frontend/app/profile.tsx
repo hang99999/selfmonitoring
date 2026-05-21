@@ -4,21 +4,25 @@ import {
   ScrollView, ActivityIndicator, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { router } from 'expo-router';
 import { api } from '../src/api';
 import { useUserId, getIsUnlocked, setUnlocked, getParticipantCode } from '../src/userStore';
 import { AppLanguage, useLanguage } from '../src/i18n';
 
 export default function ProfileScreen() {
-  const router = useRouter();
   const userId = useUserId();
   const { language, setLanguage, t } = useLanguage();
 
+  const [selectedLanguage, setSelectedLanguage] = useState<AppLanguage>(language);
   const [isUnlocked, setIsUnlockedState] = useState(false);
   const [participantCode, setParticipantCodeState] = useState<string | null>(null);
   const [inputCode, setInputCode] = useState('');
   const [inputInvite, setInputInvite] = useState('');
   const [unlocking, setUnlocking] = useState(false);
+
+  useEffect(() => {
+    setSelectedLanguage(language);
+  }, [language]);
 
   useEffect(() => {
     (async () => {
@@ -49,7 +53,8 @@ export default function ProfileScreen() {
   };
 
   const handleLanguageChange = async (nextLanguage: AppLanguage) => {
-    if (nextLanguage === language) return;
+    if (nextLanguage === selectedLanguage) return;
+    setSelectedLanguage(nextLanguage);
     await setLanguage(nextLanguage);
     api.setLanguage(userId, nextLanguage).catch(() => {});
   };
@@ -73,7 +78,7 @@ export default function ProfileScreen() {
               ['zh', t('chinese')],
               ['en', t('english')],
             ] as [AppLanguage, string][]).map(([value, label]) => {
-              const active = language === value;
+              const active = selectedLanguage === value;
               return (
                 <TouchableOpacity
                   key={value}

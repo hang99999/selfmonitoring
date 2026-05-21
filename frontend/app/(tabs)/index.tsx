@@ -4,7 +4,7 @@ import {
   Modal, TextInput, Pressable, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
@@ -503,7 +503,6 @@ function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => vo
 
 // ── Home ──────────────────────────────────────────────────────────────────────
 export default function HomeScreen() {
-  const router = useRouter();
   const userId = useUserId();
   const { language, t } = useLanguage();
   const [recordVisible, setRecordVisible] = useState(false);
@@ -513,9 +512,9 @@ export default function HomeScreen() {
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useFocusEffect(useCallback(() => {
+  useEffect(() => {
     api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {});
-  }, [userId]));
+  }, [userId]);
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
