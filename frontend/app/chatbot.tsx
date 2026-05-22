@@ -1124,6 +1124,21 @@ export default function ChatbotScreen() {
   // ── Start intent conversation ────────────────────────────────────────────────
   const handleStartIntent = async (intent: string) => {
     try {
+      const requestedPhase = intent.startsWith('phase:') ? intent.replace('phase:', '') : null;
+      if (requestedPhase) {
+        const progress = await api.getTreatmentProgress(userId).catch(() => null);
+        if (progress) {
+          setTreatmentProgress(progress);
+          if (progress.phase !== requestedPhase) {
+            Alert.alert(t('tip'), language === 'en' ? 'This phase is no longer active.' : '这个阶段已经不是当前阶段。');
+            return;
+          }
+          if (progress.phase_session_done) {
+            Alert.alert(t('tip'), language === 'en' ? 'This phase conversation is already completed.' : '本阶段对话已完成。');
+            return;
+          }
+        }
+      }
       let session = intent.startsWith('phase:')
         ? await api.getCurrentSession(userId, intent).catch(() => null)
         : null;

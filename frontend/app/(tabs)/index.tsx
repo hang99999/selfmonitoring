@@ -4,7 +4,7 @@ import {
   Modal, TextInput, Pressable, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import XiaoNuan from '../../components/XiaoNuan';
 import RecordModal from '../../components/RecordModal';
 import { api } from '../../src/api';
@@ -510,11 +510,55 @@ export default function HomeScreen() {
   const [crisisVisible, setCrisisVisible] = useState(false);
   const [feedback, setFeedback] = useState(t('defaultFeedback'));
   const [treatmentProgress, setTreatmentProgress] = useState<TreatmentProgressData | null>(null);
+  const [progressLoading, setProgressLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {});
+    let cancelled = false;
+    let attempts = 0;
+
+    const loadProgress = async () => {
+      try {
+        const progress = await api.getTreatmentProgress(userId);
+        if (!cancelled) {
+          setTreatmentProgress(progress);
+          setProgressLoading(false);
+        }
+      } catch {
+        attempts += 1;
+        if (!cancelled && attempts < 6) {
+          progressRetryRef.current = setTimeout(loadProgress, Math.min(1000 * attempts, 5000));
+        } else if (!cancelled) {
+          setProgressLoading(false);
+        }
+      }
+    };
+
+    setProgressLoading(true);
+    loadProgress();
+
+    return () => {
+      cancelled = true;
+      if (progressRetryRef.current) clearTimeout(progressRetryRef.current);
+    };
   }, [userId]);
+
+  useFocusEffect(useCallback(() => {
+    let cancelled = false;
+    const refreshProgress = async () => {
+      try {
+        const progress = await api.getTreatmentProgress(userId);
+        if (!cancelled) setTreatmentProgress(progress);
+      } catch { /* keep existing progress */ }
+      finally {
+        if (!cancelled) setProgressLoading(false);
+      }
+    };
+
+    refreshProgress();
+    return () => { cancelled = true; };
+  }, [userId]));
 
   useEffect(() => () => { if (pollRef.current) clearTimeout(pollRef.current); }, []);
 
@@ -597,6 +641,11 @@ export default function HomeScreen() {
         </View>
 
         {/* Phase card */}
+        {progressLoading && !treatmentProgress && (
+          <View className="w-full items-center py-3 mb-4">
+            <ActivityIndicator color="#f97316" />
+          </View>
+        )}
         {treatmentProgress && (
           <PhaseCard
             data={treatmentProgress}
