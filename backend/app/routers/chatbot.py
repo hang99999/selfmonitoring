@@ -969,8 +969,10 @@ async def chat(
             f"\n\n---\n"
             f"[步骤追踪] 当前必须执行：Part {current_step}。"
             f"请严格按照 Part {current_step} 的内容作答。"
-            f"若本条回复已完整交付 Part {current_step} 的全部内容，在回复最末尾追加 [STEP_DONE]（用户看不到此标记）。"
-            f"若本条回复只是在 Part {current_step} 内回应用户的追问，不要加 [STEP_DONE]。"
+            f"如果当前 Part 内容较长，不要压缩成一条消息讲完；每轮只讲一个小内容点，控制在 80-160 个中文字符。"
+            f"如果本条回复只交付了 Part {current_step} 的一部分，或只是在回应用户追问，不要追加 [STEP_DONE]。"
+            f"下一轮仍在同一个 Part 时，请根据历史继续讲尚未完成的下一个小内容点，不要重复前文。"
+            f"只有当 Part {current_step} 的必要内容已经完整交付，且用户基本理解或愿意继续时，才在回复最末尾追加 [STEP_DONE]（用户看不到此标记）。"
         )
 
     system += output_language_rule(language)
