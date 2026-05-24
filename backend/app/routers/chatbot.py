@@ -133,9 +133,6 @@ def _phase_tasks_required(cfg: PhaseConfig, phase: str) -> bool:
 
 
 def _phase_task_criteria(db: Session, user_id: str, cfg: PhaseConfig, phase: str) -> list[dict]:
-    if not _phase_tasks_required(cfg, phase):
-        return []
-
     if phase == "intro":
         total_records = db.query(MoodRecord).filter(MoodRecord.user_id == user_id).count()
         t = cfg.intro_records_target
@@ -176,14 +173,15 @@ def _phase_can_advance(db: Session, user_id: str, cfg: PhaseConfig, progress: Tr
     phase = progress.phase
     phase_days = (datetime.now() - progress.phase_unlocked_at).days
     days_required, days_until_eligible, time_met = _phase_time_status(cfg, phase, phase_days)
+    tasks_required = _phase_tasks_required(cfg, phase)
     criteria = _phase_task_criteria(db, user_id, cfg, phase)
-    criteria_met = all(c["done"] for c in criteria) if criteria else True
+    criteria_met = all(c["done"] for c in criteria) if tasks_required and criteria else True
     phase_session_done = _phase_session_completed_since(db, user_id, phase, progress.phase_unlocked_at)
     return {
         "days_required": days_required,
         "days_until_eligible": days_until_eligible,
         "time_met": time_met,
-        "tasks_required": _phase_tasks_required(cfg, phase),
+        "tasks_required": tasks_required,
         "criteria": criteria,
         "criteria_met": criteria_met,
         "phase_session_done": phase_session_done,

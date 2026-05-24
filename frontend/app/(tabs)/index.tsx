@@ -426,7 +426,9 @@ function PhaseCard({ data, onStartSession, onOpenChat, onAdvance }: {
           {/* 本阶段任务 */}
           {data.criteria.length > 0 && (
             <View className="bg-gray-50 rounded-xl border border-gray-100 px-4 py-3">
-              <Text className="text-[11px] font-semibold text-gray-400 mb-2">{t('phaseTasks')}</Text>
+              <Text className="text-[11px] font-semibold text-gray-400 mb-2">
+                {t(hasTaskRequirement ? 'phaseTasks' : 'phaseRecommendedTasks')}
+              </Text>
               <View className="gap-2">
                 {data.criteria.map(c => (
                   <View key={c.key} className="flex-row items-center gap-2">
