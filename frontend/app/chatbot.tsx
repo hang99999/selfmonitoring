@@ -489,12 +489,11 @@ function S2DomainCard({
 }
 
 function S2ValueCard({
-  userId, domain, savedValue, phaseStep, onSaved, onSubmitMessage, onProgressRefresh,
+  userId, domain, savedValue, onSaved, onSubmitMessage, onProgressRefresh,
 }: {
   userId: string;
   domain: LifeDomain | null;
   savedValue: Value | null;
-  phaseStep: number;
   onSaved: (v: Value) => void;
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
@@ -511,7 +510,7 @@ function S2ValueCard({
       const res = await onSubmitMessage(language === 'en'
         ? `[Value entered] Domain: ${translateDomainName(domain.name, language)}. Value: ${draft}`
         : `【已填写价值观】领域：${domain.name}，价值观：${draft}`);
-      const accepted = typeof res?.phase_step === 'number' && res.phase_step > phaseStep;
+      const accepted = res?.card_validation?.type === 'value' && res.card_validation.status === 'ok';
       if (!accepted) {
         setText(draft);
         return;
@@ -562,13 +561,12 @@ function S2ValueCard({
 }
 
 function S2ActivityCard({
-  userId, domain, value, savedActivity, phaseStep, onSaved, onSubmitMessage, onProgressRefresh,
+  userId, domain, value, savedActivity, onSaved, onSubmitMessage, onProgressRefresh,
 }: {
   userId: string;
   domain: LifeDomain | null;
   value: Value | null;
   savedActivity: Activity | null;
-  phaseStep: number;
   onSaved: (a: Activity) => void;
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
@@ -585,7 +583,7 @@ function S2ActivityCard({
       const res = await onSubmitMessage(language === 'en'
         ? `[Activity entered] ${draft} (domain: ${translateDomainName(domain.name, language)})`
         : `【已填写活动】${draft}（领域：${domain.name}）`);
-      const accepted = typeof res?.phase_step === 'number' && res.phase_step > phaseStep;
+      const accepted = res?.card_validation?.type === 'activity' && res.card_validation.status === 'ok';
       if (!accepted) {
         setText(draft);
         return;
@@ -690,7 +688,6 @@ function S2InlineFlow({
           userId={userId}
           domain={selectedDomain}
           savedValue={savedValue}
-          phaseStep={phaseStep}
           onSaved={(value) => {
             setSavedValue(value);
             setExpanded(true);
@@ -708,7 +705,6 @@ function S2InlineFlow({
           domain={selectedDomain}
           value={savedValue}
           savedActivity={savedActivity}
-          phaseStep={phaseStep}
           onSaved={(activity) => {
             setSavedActivity(activity);
             setExpanded(true);

@@ -122,6 +122,7 @@ export interface ChatResponse {
   reply: string;
   is_crisis: boolean;
   detected_activity: { type: 'completed' | 'planned'; name: string } | null;
+  card_validation?: { type: 'value' | 'activity'; status: 'ok' | 'retry' } | null;
   phase_step?: number | null;
   free_chat_route?: {
     primary_mode: string;

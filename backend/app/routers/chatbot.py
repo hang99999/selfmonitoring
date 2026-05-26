@@ -655,6 +655,7 @@ def _apply_phase_review_window(
 # ── Activity tag parsing ──────────────────────────────────────────────────────
 
 _ACT_TAG = re.compile(r'\[ACT:(done|plan):([^\]]{1,30})\]\s*$', re.MULTILINE)
+_CARD_TAG = re.compile(r'\[CARD:(value|activity):(ok|retry)\]')
 
 
 def _extract_activity_tag(reply: str) -> tuple[str, Optional[dict]]:
@@ -665,6 +666,14 @@ def _extract_activity_tag(reply: str) -> tuple[str, Optional[dict]]:
     act_name = m.group(2).strip()
     clean = reply[:m.start()].rstrip()
     return clean, {"type": act_type, "name": act_name}
+
+
+def _extract_card_validation(reply: str) -> tuple[str, Optional[dict]]:
+    m = _CARD_TAG.search(reply)
+    if not m:
+        return reply, None
+    clean = _CARD_TAG.sub("", reply).strip()
+    return clean, {"type": m.group(1), "status": m.group(2)}
 
 
 # ── Trigger log helpers ───────────────────────────────────────────────────────
@@ -883,6 +892,7 @@ async def chat(
             "is_crisis": True,
             "detected_activity": None,
             "phase_step": None,
+            "card_validation": None,
         }
 
     require_ai_access(db, req.user_id)
@@ -1001,6 +1011,7 @@ async def chat(
 
     # Strip hidden [ACT:...] tag
     reply, detected = _extract_activity_tag(reply)
+    reply, card_validation = _extract_card_validation(reply)
 
     # Strip [STEP_DONE] marker and advance phase_step
     if "[STEP_DONE]" in reply:
@@ -1034,6 +1045,7 @@ async def chat(
         "detected_activity": detected,
         "phase_step": response_phase_step,
         "free_chat_route": free_chat_route,
+        "card_validation": card_validation,
     }
 
 
