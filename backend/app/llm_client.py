@@ -77,6 +77,12 @@ def _is_retryable_llm_error(error: Exception) -> bool:
     return False
 
 
+def _require_nonempty_content(content, response_data: dict) -> str:
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError(f"Empty content in response: {response_data}")
+    return content.strip()
+
+
 async def _call_with_retries(label: str, operation) -> str:
     attempts = LLM_MAX_RETRIES + 1
     for attempt in range(1, attempts + 1):
@@ -120,7 +126,8 @@ async def _call_openai(system_prompt: str, user_message: str, model: str) -> str
         response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
+        content = data["choices"][0]["message"]["content"]
+        return _require_nonempty_content(content, data)
 
 
 async def _call_anthropic(system_prompt: str, user_message: str, model: str) -> str:
@@ -144,7 +151,8 @@ async def _call_anthropic(system_prompt: str, user_message: str, model: str) -> 
         response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
-        return data["content"][0]["text"].strip()
+        content = data["content"][0]["text"]
+        return _require_nonempty_content(content, data)
 
 
 async def _call_modelscope(system_prompt: str, user_message: str, model: str) -> str:
@@ -171,9 +179,7 @@ async def _call_modelscope(system_prompt: str, user_message: str, model: str) ->
         if not choices:
             raise ValueError(f"Empty choices in response: {data}")
         content = (choices[0].get("message") or {}).get("content")
-        if not content:
-            raise ValueError(f"Empty content in response: {data}")
-        return content.strip()
+        return _require_nonempty_content(content, data)
 
 
 # ── Multi-turn implementations ──────────────────────────────────────────────
@@ -194,7 +200,8 @@ async def _call_openai_chat(system_prompt: str, messages: list[dict], model: str
         response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"].strip()
+        content = data["choices"][0]["message"]["content"]
+        return _require_nonempty_content(content, data)
 
 
 async def _call_anthropic_chat(system_prompt: str, messages: list[dict], model: str) -> str:
@@ -215,7 +222,8 @@ async def _call_anthropic_chat(system_prompt: str, messages: list[dict], model: 
         response = await client.post(url, headers=headers, json=payload)
         response.raise_for_status()
         data = response.json()
-        return data["content"][0]["text"].strip()
+        content = data["content"][0]["text"]
+        return _require_nonempty_content(content, data)
 
 
 async def get_embedding(text: str) -> list[float]:
@@ -259,6 +267,4 @@ async def _call_modelscope_chat(system_prompt: str, messages: list[dict], model:
         if not choices:
             raise ValueError(f"Empty choices in response: {data}")
         content = (choices[0].get("message") or {}).get("content")
-        if not content:
-            raise ValueError(f"Empty content in response: {data}")
-        return content.strip()
+        return _require_nonempty_content(content, data)
