@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.access import require_ai_access
 from app.database import SessionLocal, get_db
 from app.i18n import get_user_language, localized_text, output_language_rule
-from app.llm_client import call_llm, call_llm_chat
+from app.llm_client import call_llm, call_llm_chat, get_llm_stats
 from app.models import (
     User, MoodRecord, PlannedActivity, DailyMood,
     Activity, Value, LifeDomain,
@@ -751,6 +751,12 @@ async def get_chatbot_state(
 ):
     """Return computed user state for the chatbot session."""
     return _compute_user_state(db, user_id)
+
+
+@router.get("/debug/llm-stats")
+async def get_debug_llm_stats():
+    """Return process-local LLM retry counters. Does not include user content."""
+    return get_llm_stats()
 
 
 # ── Session endpoints (must be before /{session_id} style routes) ─────────────

@@ -1281,6 +1281,20 @@ export default function ChatbotScreen() {
     lastAutoScrolledItemCount.current = allItems.length;
   }, [allItems.length, initializing]);
   const phaseListHeader = (() => {
+    if (currentIntent === 'phase:setup') {
+      return (
+        <View className="mb-2">
+          <S2InlineFlow
+            progress={treatmentProgress}
+            userId={userId}
+            phaseStep={currentPhaseStep}
+            onSubmitMessage={_sendMessage}
+            onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
+          />
+        </View>
+      );
+    }
+
     if (currentIntent === 'phase:first_review') {
       return (
         <View className="mb-2">
@@ -1366,16 +1380,6 @@ export default function ChatbotScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
-          {currentIntent === 'phase:setup' && (
-            <S2InlineFlow
-              progress={treatmentProgress}
-              userId={userId}
-              phaseStep={currentPhaseStep}
-              onSubmitMessage={_sendMessage}
-              onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
-            />
-          )}
-
           <FlatList
             ref={listRef}
             data={allItems}

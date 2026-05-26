@@ -2,6 +2,8 @@ import os
 import json
 import asyncio
 import logging
+from collections import Counter
+from datetime import datetime
 import httpx
 from dotenv import load_dotenv
 
@@ -18,6 +20,17 @@ LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 LLM_MAX_RETRIES = 2
 LLM_RETRY_BASE_DELAY = 0.8
+_LLM_STATS_STARTED_AT = datetime.now().isoformat()
+_LLM_STATS: dict[str, Counter] = {
+    "calls": Counter(),
+    "attempts": Counter(),
+    "success": Counter(),
+    "success_by_attempt": Counter(),
+    "success_after_retry": Counter(),
+    "retryable_errors": Counter(),
+    "non_retryable_errors": Counter(),
+    "final_failures": Counter(),
+}
 
 
 def _get_model() -> str:
@@ -83,13 +96,61 @@ def _require_nonempty_content(content, response_data: dict) -> str:
     return content.strip()
 
 
+def _llm_error_key(error: Exception) -> str:
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP_{error.response.status_code}"
+    if isinstance(error, ValueError):
+        message = str(error)
+        if message.startswith("Empty content"):
+            return "EmptyContent"
+        if message.startswith("Empty choices"):
+            return "EmptyChoices"
+    return type(error).__name__
+
+
+def get_llm_stats() -> dict:
+    return {
+        "started_at": _LLM_STATS_STARTED_AT,
+        "provider": LLM_PROVIDER,
+        "model": _get_model(),
+        "max_attempts": LLM_MAX_RETRIES + 1,
+        "retry_base_delay_seconds": LLM_RETRY_BASE_DELAY,
+        **{key: dict(counter) for key, counter in _LLM_STATS.items()},
+    }
+
+
 async def _call_with_retries(label: str, operation) -> str:
     attempts = LLM_MAX_RETRIES + 1
+    _LLM_STATS["calls"][label] += 1
     for attempt in range(1, attempts + 1):
+        _LLM_STATS["attempts"][label] += 1
         try:
-            return await operation()
+            result = await operation()
+            _LLM_STATS["success"][label] += 1
+            _LLM_STATS["success_by_attempt"][f"{label}:attempt_{attempt}"] += 1
+            if attempt > 1:
+                _LLM_STATS["success_after_retry"][label] += 1
+                logger.info("%s succeeded after %s attempts", label, attempt)
+            return result
         except Exception as error:
-            if attempt >= attempts or not _is_retryable_llm_error(error):
+            retryable = _is_retryable_llm_error(error)
+            error_key = _llm_error_key(error)
+            stats_key = f"{label}:{error_key}"
+            if retryable:
+                _LLM_STATS["retryable_errors"][stats_key] += 1
+            else:
+                _LLM_STATS["non_retryable_errors"][stats_key] += 1
+
+            if attempt >= attempts or not retryable:
+                _LLM_STATS["final_failures"][stats_key] += 1
+                logger.error(
+                    "%s failed after %s/%s attempts with %s: %s",
+                    label,
+                    attempt,
+                    attempts,
+                    type(error).__name__,
+                    error,
+                )
                 raise
             delay = LLM_RETRY_BASE_DELAY * (2 ** (attempt - 1))
             logger.warning(
