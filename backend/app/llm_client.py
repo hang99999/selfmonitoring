@@ -18,7 +18,25 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-LLM_MAX_RETRIES = 2
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("Invalid integer for %s=%r; using %s", name, value, default)
+        return default
+
+
+LLM_MAX_RETRIES = max(0, _env_int("LLM_MAX_RETRIES", 4))
+LLM_FALLBACK_MODEL = os.getenv(
+    "LLM_FALLBACK_MODEL",
+    "deepseek-v4-flash" if LLM_PROVIDER == "openai" else "",
+).strip()
+LLM_FALLBACK_RETRIES = max(0, _env_int("LLM_FALLBACK_RETRIES", 1))
 LLM_RETRY_BASE_DELAY = 0.8
 _LLM_STATS_STARTED_AT = datetime.now().isoformat()
 _LLM_STATS: dict[str, Counter] = {
@@ -30,6 +48,9 @@ _LLM_STATS: dict[str, Counter] = {
     "retryable_errors": Counter(),
     "non_retryable_errors": Counter(),
     "final_failures": Counter(),
+    "fallback_calls": Counter(),
+    "fallback_success": Counter(),
+    "fallback_failures": Counter(),
 }
 
 
@@ -41,20 +62,26 @@ def _get_model() -> str:
     return "gpt-4o"
 
 
+def _get_fallback_model(primary_model: str) -> str | None:
+    if not LLM_FALLBACK_MODEL or LLM_FALLBACK_MODEL == primary_model:
+        return None
+    return LLM_FALLBACK_MODEL
+
+
 async def call_llm(system_prompt: str, user_message: str) -> str:
     """Unified LLM call layer supporting OpenAI, Anthropic, and ModelScope APIs."""
     model = _get_model()
 
-    async def operation() -> str:
+    async def operation(model_name: str) -> str:
         if LLM_PROVIDER == "anthropic":
-            return await _call_anthropic(system_prompt, user_message, model)
+            return await _call_anthropic(system_prompt, user_message, model_name)
         elif LLM_PROVIDER == "modelscope":
-            return await _call_modelscope(system_prompt, user_message, model)
+            return await _call_modelscope(system_prompt, user_message, model_name)
         else:
-            return await _call_openai(system_prompt, user_message, model)
+            return await _call_openai(system_prompt, user_message, model_name)
 
     try:
-        return await _call_with_retries("llm", operation)
+        return await _call_with_model_fallback("llm", model, operation)
     except Exception as e:
         return f"[LLM Error] {type(e).__name__}: {str(e)}"
 
@@ -63,16 +90,16 @@ async def call_llm_chat(system_prompt: str, messages: list[dict]) -> str:
     """Multi-turn chat call. messages is a list of {role: 'user'|'assistant', content: str}."""
     model = _get_model()
 
-    async def operation() -> str:
+    async def operation(model_name: str) -> str:
         if LLM_PROVIDER == "anthropic":
-            return await _call_anthropic_chat(system_prompt, messages, model)
+            return await _call_anthropic_chat(system_prompt, messages, model_name)
         elif LLM_PROVIDER == "modelscope":
-            return await _call_modelscope_chat(system_prompt, messages, model)
+            return await _call_modelscope_chat(system_prompt, messages, model_name)
         else:
-            return await _call_openai_chat(system_prompt, messages, model)
+            return await _call_openai_chat(system_prompt, messages, model_name)
 
     try:
-        return await _call_with_retries("llm_chat", operation)
+        return await _call_with_model_fallback("llm_chat", model, operation)
     except Exception as e:
         return f"[LLM Error] {type(e).__name__}: {str(e)}"
 
@@ -109,33 +136,83 @@ def _llm_error_key(error: Exception) -> str:
 
 
 def get_llm_stats() -> dict:
+    model = _get_model()
+    fallback_model = _get_fallback_model(model)
     return {
         "started_at": _LLM_STATS_STARTED_AT,
         "provider": LLM_PROVIDER,
-        "model": _get_model(),
+        "model": model,
+        "fallback_model": fallback_model,
         "max_attempts": LLM_MAX_RETRIES + 1,
+        "fallback_max_attempts": LLM_FALLBACK_RETRIES + 1 if fallback_model else 0,
         "retry_base_delay_seconds": LLM_RETRY_BASE_DELAY,
         **{key: dict(counter) for key, counter in _LLM_STATS.items()},
     }
 
 
-async def _call_with_retries(label: str, operation) -> str:
-    attempts = LLM_MAX_RETRIES + 1
-    _LLM_STATS["calls"][label] += 1
+async def _call_with_model_fallback(label: str, primary_model: str, operation) -> str:
+    fallback_model = _get_fallback_model(primary_model)
+    try:
+        return await _call_with_retries(
+            label,
+            lambda: operation(primary_model),
+            LLM_MAX_RETRIES,
+            primary_model,
+            log_final_failure=not fallback_model,
+        )
+    except Exception as primary_error:
+        if not fallback_model or not _is_retryable_llm_error(primary_error):
+            raise
+
+        fallback_key = f"{label}:{fallback_model}"
+        _LLM_STATS["fallback_calls"][fallback_key] += 1
+        logger.warning(
+            "%s switching from %s to fallback model %s after %s: %s",
+            label,
+            primary_model,
+            fallback_model,
+            type(primary_error).__name__,
+            primary_error,
+        )
+        try:
+            result = await _call_with_retries(
+                label,
+                lambda: operation(fallback_model),
+                LLM_FALLBACK_RETRIES,
+                fallback_model,
+            )
+            _LLM_STATS["fallback_success"][fallback_key] += 1
+            return result
+        except Exception as fallback_error:
+            error_key = _llm_error_key(fallback_error)
+            _LLM_STATS["fallback_failures"][f"{fallback_key}:{error_key}"] += 1
+            raise
+
+
+async def _call_with_retries(
+    label: str,
+    operation,
+    max_retries: int,
+    model_name: str,
+    log_final_failure: bool = True,
+) -> str:
+    attempts = max_retries + 1
+    stats_label = f"{label}:{model_name}"
+    _LLM_STATS["calls"][stats_label] += 1
     for attempt in range(1, attempts + 1):
-        _LLM_STATS["attempts"][label] += 1
+        _LLM_STATS["attempts"][stats_label] += 1
         try:
             result = await operation()
-            _LLM_STATS["success"][label] += 1
-            _LLM_STATS["success_by_attempt"][f"{label}:attempt_{attempt}"] += 1
+            _LLM_STATS["success"][stats_label] += 1
+            _LLM_STATS["success_by_attempt"][f"{stats_label}:attempt_{attempt}"] += 1
             if attempt > 1:
-                _LLM_STATS["success_after_retry"][label] += 1
-                logger.info("%s succeeded after %s attempts", label, attempt)
+                _LLM_STATS["success_after_retry"][stats_label] += 1
+                logger.info("%s succeeded after %s attempts", stats_label, attempt)
             return result
         except Exception as error:
             retryable = _is_retryable_llm_error(error)
             error_key = _llm_error_key(error)
-            stats_key = f"{label}:{error_key}"
+            stats_key = f"{stats_label}:{error_key}"
             if retryable:
                 _LLM_STATS["retryable_errors"][stats_key] += 1
             else:
@@ -143,9 +220,10 @@ async def _call_with_retries(label: str, operation) -> str:
 
             if attempt >= attempts or not retryable:
                 _LLM_STATS["final_failures"][stats_key] += 1
-                logger.error(
+                log = logger.error if log_final_failure else logger.warning
+                log(
                     "%s failed after %s/%s attempts with %s: %s",
-                    label,
+                    stats_label,
                     attempt,
                     attempts,
                     type(error).__name__,
@@ -155,7 +233,7 @@ async def _call_with_retries(label: str, operation) -> str:
             delay = LLM_RETRY_BASE_DELAY * (2 ** (attempt - 1))
             logger.warning(
                 "%s failed on attempt %s/%s with %s: %s; retrying in %.1fs",
-                label,
+                stats_label,
                 attempt,
                 attempts,
                 type(error).__name__,
@@ -164,7 +242,7 @@ async def _call_with_retries(label: str, operation) -> str:
             )
             await asyncio.sleep(delay)
 
-    raise RuntimeError(f"{label} failed unexpectedly")
+    raise RuntimeError(f"{stats_label} failed unexpectedly")
 
 
 async def _call_openai(system_prompt: str, user_message: str, model: str) -> str:
