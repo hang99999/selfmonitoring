@@ -60,14 +60,14 @@ def localized_text(key: str, language: Optional[str]) -> str:
         "crisis_reply": {
             "zh": (
                 "你说的这些让我很担心你。我很希望你能跟现实中的人聊聊。\n\n"
-                "你可以拨打**全国心理援助热线 400-161-9995**，或者联系你身边信任的人。\n\n"
+                "你可以拨打**全国统一心理援助热线 12356**，也可以联系希望24热线 **400-161-9995**，或者联系你身边信任的人。\n\n"
                 "如果你现在觉得不安全，请联系 120 或去最近的医院急诊。\n\n"
                 "我会一直在这里，随时告诉我你的情况。"
             ),
             "en": (
                 "What you said makes me concerned for your safety. I really hope you can talk to someone in real life right now.\n\n"
                 "If you are in immediate danger, please contact local emergency services or go to the nearest emergency room.\n\n"
-                "If you are in China, you can call the national mental health support hotline at **400-161-9995**, or reach out to someone you trust.\n\n"
+                "If you are in China, you can call the national mental health support hotline at **12356**, Hope 24 at **400-161-9995**, or reach out to someone you trust.\n\n"
                 "I am here with you too. You can tell me what is happening at any time."
             ),
         },

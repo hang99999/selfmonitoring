@@ -150,6 +150,14 @@ _PROMPT_SEEDS = [
 ]
 
 
+_PROMPT_HOTLINE_REPLACEMENTS = [
+    (
+        "全国心理援助热线 400-161-9995",
+        "全国统一心理援助热线 12356、希望24热线 400-161-9995",
+    ),
+]
+
+
 def _seed_prompts(db):
     from datetime import datetime
     for key, description, content in _PROMPT_SEEDS:
@@ -161,6 +169,13 @@ def _seed_prompts(db):
                 description=description,
                 updated_at=datetime.now(),
             ))
+        elif existing.content:
+            updated_content = existing.content
+            for old, new in _PROMPT_HOTLINE_REPLACEMENTS:
+                updated_content = updated_content.replace(old, new)
+            if updated_content != existing.content:
+                existing.content = updated_content
+                existing.updated_at = datetime.now()
     db.commit()
 
 

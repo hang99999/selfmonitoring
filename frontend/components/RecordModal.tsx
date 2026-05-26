@@ -508,9 +508,10 @@ export default function RecordModal({
               <Text className="text-xl font-bold text-red-800 mb-2 text-center">{t('crisisTitle')}</Text>
               <Text className="text-sm text-red-600 mb-5 text-center">{t('highRiskHelp')}</Text>
               {[
-                [language === 'en' ? 'National mental health support hotline' : '全国心理援助热线', '400-161-9995'],
+                [language === 'en' ? 'National mental health support hotline' : '全国统一心理援助热线', '12356'],
                 [language === 'en' ? 'Beijing crisis hotline' : '北京危机热线', '010-82951332'],
-                [language === 'en' ? '24-hour lifeline' : '24小时生命热线', '400-821-1215'],
+                [language === 'en' ? 'Hope 24 hotline' : '希望24热线', '400-161-9995'],
+                [language === 'en' ? 'Lifeline China (10 AM-10 PM)' : 'Lifeline China（10:00-22:00）', '400-821-1215'],
               ].map(([label, num]) => (
                 <TouchableOpacity
                   key={num}

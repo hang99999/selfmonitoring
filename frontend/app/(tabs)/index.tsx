@@ -322,22 +322,22 @@ function PlanModal({ visible, onClose, userId }: { visible: boolean; onClose: ()
 const PHASE_CONVERSATION: Record<string, string> = {
   intro:        '了解行为激活的原理，开始观察自己的活动与情绪',
   setup:        '探索对你真正重要的事，建立有意义的活动库',
-  first_review: '回顾上周执行情况，一起找出障碍和解决方法',
-  review_cycle: '每周：回顾进度 → 调整计划 → 安排新的一周',
+  first_review: '回顾上一阶段执行情况，一起找出障碍和解决方法',
+  review_cycle: '阶段回顾：回顾进度 → 调整计划 → 安排下一阶段',
 };
 
 const PHASE_CONVERSATION_EN: Record<string, string> = {
   intro:        'Learn the basics of behavioral activation and start noticing activities and mood',
   setup:        'Explore what matters to you and build a meaningful activity library',
-  first_review: 'Review last week, identify obstacles, and find practical next steps',
-  review_cycle: 'Weekly rhythm: review progress, adjust plans, and schedule the next week',
+  first_review: 'Review the previous phase, identify obstacles, and find practical next steps',
+  review_cycle: 'Review rhythm: review progress, adjust plans, and schedule the next phase',
 };
 
 function phaseLabel(phase: string, cycle: number | null | undefined, language: AppLanguage) {
   if (language !== 'en') return null;
-  if (phase === 'intro') return 'Week 1 · Start monitoring';
-  if (phase === 'setup') return 'Week 2 · Values × Activities × Plans';
-  if (phase === 'first_review') return 'Week 3 · First review';
+  if (phase === 'intro') return 'Phase 1 · Start monitoring';
+  if (phase === 'setup') return 'Phase 2 · Values × Activities × Plans';
+  if (phase === 'first_review') return 'Phase 3 · First review';
   if (phase === 'review_cycle') return `Review cycle · Round ${cycle ?? 1}`;
   return null;
 }
@@ -484,9 +484,10 @@ function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           </View>
           <Text className="text-xl font-bold text-red-800 text-center mb-3">{t('crisisTitle')}</Text>
           {[
-            [language === 'en' ? 'National mental health support hotline' : '全国心理援助热线', '400-161-9995'],
+            [language === 'en' ? 'National mental health support hotline' : '全国统一心理援助热线', '12356'],
             [language === 'en' ? 'Beijing crisis intervention center' : '北京心理危机干预中心', '010-82951332'],
-            [language === 'en' ? 'Lifeline' : '生命热线', '400-821-1215'],
+            [language === 'en' ? 'Hope 24 hotline' : '希望24热线', '400-161-9995'],
+            [language === 'en' ? 'Lifeline China (10 AM-10 PM)' : 'Lifeline China（10:00-22:00）', '400-821-1215'],
           ].map(([label, num]) => (
             <View key={num} className="px-4 py-3 bg-white rounded-2xl flex-row justify-between items-center mb-2">
               <Text className="text-sm text-gray-500">{label}</Text>

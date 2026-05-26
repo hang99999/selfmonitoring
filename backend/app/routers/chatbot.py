@@ -587,7 +587,7 @@ def _apply_phase_review_window(
         }
         for r in records
         if r.activity
-    ][:8]
+    ][:20]
 
     records_by_id = {r.id: r for r in records}
     records_by_plan_id = {r.planned_activity_id: r for r in records if r.planned_activity_id}
@@ -937,11 +937,15 @@ async def chat(
 
     if effective_intent and effective_intent.startswith("phase:") and phase_session_obj:
         now = datetime.now()
-        if progress.phase == "first_review":
+        intent_phase = effective_intent.removeprefix("phase:")
+        if intent_phase == "setup" and progress.phase == "setup":
+            start = progress.phase_unlocked_at - timedelta(days=max(1, cfg.intro_days))
+            _apply_phase_review_window(db, state, req.user_id, start, now)
+        elif intent_phase == "first_review" and progress.phase == "first_review":
             fallback = progress.phase_unlocked_at - timedelta(days=7)
             start = _phase_session_start(db, req.user_id, "phase:setup", phase_session_obj.created_at, fallback)
             _apply_phase_review_window(db, state, req.user_id, start, now)
-        elif progress.phase == "review_cycle":
+        elif intent_phase == "review_cycle" and progress.phase == "review_cycle":
             start = _phase_session_start(db, req.user_id, "phase:review_cycle", phase_session_obj.created_at, progress.phase_unlocked_at)
             _apply_phase_review_window(db, state, req.user_id, start, now)
 

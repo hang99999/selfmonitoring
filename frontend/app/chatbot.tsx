@@ -38,9 +38,10 @@ function CrisisModal({ visible, onClose }: { visible: boolean; onClose: () => vo
         <View className="bg-red-50 rounded-3xl p-8">
           <Text className="text-xl font-bold text-red-800 text-center mb-4">{t('crisisTitle')}</Text>
           {[
-            [language === 'en' ? 'National mental health support hotline' : '全国心理援助热线', '400-161-9995'],
+            [language === 'en' ? 'National mental health support hotline' : '全国统一心理援助热线', '12356'],
             [language === 'en' ? 'Beijing crisis intervention center' : '北京心理危机干预中心', '010-82951332'],
-            [language === 'en' ? 'Lifeline' : '生命热线', '400-821-1215'],
+            [language === 'en' ? 'Hope 24 hotline' : '希望24热线', '400-161-9995'],
+            [language === 'en' ? 'Lifeline China (10 AM-10 PM)' : 'Lifeline China（10:00-22:00）', '400-821-1215'],
           ].map(([label, num]) => (
             <View key={num} className="px-4 py-3 bg-white rounded-2xl flex-row justify-between mb-2">
               <Text className="text-sm text-gray-500">{label}</Text>
@@ -603,7 +604,7 @@ function S2ActivityCard({
             value={text}
             onChangeText={setText}
             editable={!!value && !saving}
-            placeholder={language === 'en' ? 'For example: walk for 15 minutes on Wednesday evening' : '例如：周三晚上散步15分钟'}
+            placeholder={language === 'en' ? 'For example: walk for 15 minutes tomorrow evening' : '例如：明天晚上散步15分钟'}
             placeholderTextColor="#9ca3af"
             multiline
             className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
@@ -767,10 +768,10 @@ function S3InlineFlow({
 // ── Treatment Progress Card ───────────────────────────────────────────────────
 
 const INTENT_LABELS: Record<string, string> = {
-  'phase:intro':                        'Week 1 · 启动监测',
-  'phase:setup':                        'Week 2 · 价值观 × 活动 × 计划',
-  'phase:first_review':                 'Week 3 · 首次回顾',
-  'phase:review_cycle':                 '本周回顾',
+  'phase:intro':                        '阶段1 · 启动监测',
+  'phase:setup':                        '阶段2 · 价值观 × 活动 × 计划',
+  'phase:first_review':                 '阶段3 · 首次回顾',
+  'phase:review_cycle':                 '阶段回顾',
   'trigger:monitoring_troubleshoot':    '监测疏通',
   'trigger:life_area_balance':          '生活领域平衡',
   'trigger:support_contract_review':    '支持者复习',
@@ -792,9 +793,9 @@ const CONVERSATION_TRIGGERS = new Set(['monitoring_troubleshoot']);
 
 function getIntentLabel(intent: string, language: AppLanguage, t: ReturnType<typeof useLanguage>['t']) {
   const labels: Record<string, string> = {
-    'phase:intro': 'Week 1 · Intro',
-    'phase:setup': 'Week 2 · Values × Activities × Plans',
-    'phase:first_review': 'Week 3 · First review',
+    'phase:intro': 'Phase 1 · Intro',
+    'phase:setup': 'Phase 2 · Values × Activities × Plans',
+    'phase:first_review': 'Phase 3 · First review',
     'phase:review_cycle': t('currentWeekReview'),
     'trigger:monitoring_troubleshoot': 'Monitoring check-in',
     'trigger:life_area_balance': 'Life domain balance',
@@ -855,7 +856,7 @@ function TreatmentProgressCard({
   const isForever = data.phase === 'review_cycle';
 
   const summaryText = isForever
-    ? language === 'en' ? `Week ${data.review_cycle_count} · ongoing` : `第 ${data.review_cycle_count} 周 · 持续执行中`
+    ? language === 'en' ? `Cycle ${data.review_cycle_count} · ongoing` : `第 ${data.review_cycle_count} 轮 · 持续执行中`
     : data.days_until_eligible > 0
       ? language === 'en' ? `${doneCriteria}/${criteriaCount} done · ${data.days_until_eligible} days left` : `${doneCriteria}/${criteriaCount} 项完成 · 还差 ${data.days_until_eligible} 天`
       : data.criteria_met
@@ -909,9 +910,9 @@ function TreatmentProgressCard({
           </Text>
           <View className="flex-row flex-wrap gap-2">
             {[
-              { label: 'Week 1',  phase: 'intro' },
-              { label: 'Week 2',  phase: 'setup' },
-              { label: 'Week 3',  phase: 'first_review' },
+              { label: language === 'en' ? 'Phase 1' : '阶段1',  phase: 'intro' },
+              { label: language === 'en' ? 'Phase 2' : '阶段2',  phase: 'setup' },
+              { label: language === 'en' ? 'Phase 3' : '阶段3',  phase: 'first_review' },
               { label: language === 'en' ? 'Review cycle' : '执行循环', phase: 'review_cycle' },
             ].map(({ label, phase }) => (
               <TouchableOpacity
