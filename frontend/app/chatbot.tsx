@@ -1447,6 +1447,7 @@ export default function ChatbotScreen() {
           onClose={() => { setShowRecord(false); setPendingActivityName(''); }}
           onRecordSubmitted={() => { setShowRecord(false); setPendingActivityName(''); }}
           prefillActivity={pendingActivityName}
+          userId={userId}
         />
       )}
       {showPlan && (

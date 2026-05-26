@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { api, isAiAccessRequiredError } from '../../src/api';
 import { AppLanguage, useLanguage } from '../../src/i18n';
 import { useUserId } from '../../src/userStore';
@@ -290,9 +291,10 @@ export default function TimelineScreen() {
     } finally {
       setLoading(false);
     }
-  }, [dateStr, tick]);
+  }, [dateStr, tick, userId]);
 
   useEffect(() => { load(); }, [load]);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const prevDay = () => setSelectedDate(d => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
   const nextDay = () => {
@@ -320,6 +322,11 @@ export default function TimelineScreen() {
       allDayPlanned.push(p);
     }
   });
+  const visibleHours = Array.from(new Set([
+    ...HOURS,
+    ...Object.keys(recordsByHour).map(Number),
+    ...Object.keys(plannedByHour).map(Number),
+  ])).sort((a, b) => a - b);
 
   const hasContent = records.length > 0 || planned.length > 0;
 
@@ -422,7 +429,7 @@ export default function TimelineScreen() {
 
           {/* Hourly timeline */}
           <View className="mt-2">
-            {HOURS.map(hour => {
+            {visibleHours.map(hour => {
               const recs = recordsByHour[hour] || [];
               const plans = plannedByHour[hour] || [];
               if (recs.length === 0 && plans.length === 0) {
