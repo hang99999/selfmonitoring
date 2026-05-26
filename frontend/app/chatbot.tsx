@@ -277,6 +277,49 @@ function Bubble({ msg }: { msg: ChatMessage }) {
 
 type S2ActionMessage = (msg: string) => Promise<ChatResponse | null>;
 
+function PhasePinnedPanel({
+  title, detail, children, defaultExpanded = true,
+}: {
+  title: string;
+  detail: string;
+  children: React.ReactNode;
+  defaultExpanded?: boolean;
+}) {
+  const { language } = useLanguage();
+  const { height } = useWindowDimensions();
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const maxPanelHeight = Math.max(170, Math.min(320, Math.round(height * 0.36)));
+
+  return (
+    <View className="px-3 py-2 bg-orange-50 border-b border-orange-100">
+      <TouchableOpacity
+        onPress={() => setExpanded(v => !v)}
+        activeOpacity={0.85}
+        className="bg-white rounded-2xl border border-orange-100 px-4 py-3 flex-row items-center gap-3"
+      >
+        <View className="flex-1">
+          <Text className="text-xs font-semibold text-orange-500 mb-1">{title}</Text>
+          <Text className="text-xs text-gray-500" numberOfLines={1}>{detail}</Text>
+        </View>
+        <Text className="text-xs font-semibold text-orange-500">
+          {expanded ? (language === 'en' ? 'Hide' : '收起') : (language === 'en' ? 'Open' : '展开')}
+        </Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View className="mt-2" style={{ maxHeight: maxPanelHeight }}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+
 function S2ScatterCard({
   progress, userId, includePlans = false, title,
 }: {
@@ -648,14 +691,11 @@ function S2InlineFlow({
   onProgressRefresh: () => void;
 }) {
   const { language, t } = useLanguage();
-  const { height } = useWindowDimensions();
   const [selectedDomain, setSelectedDomain] = useState<LifeDomain | null>(null);
   const [savedValue, setSavedValue] = useState<Value | null>(null);
   const [savedActivity, setSavedActivity] = useState<Activity | null>(null);
-  const [expanded, setExpanded] = useState(true);
   const showScatter = phaseStep <= 0;
   const showSetupCards = phaseStep >= 1;
-  const maxPanelHeight = Math.max(170, Math.min(320, Math.round(height * 0.36)));
 
   if (!showScatter && !showSetupCards) return null;
 
@@ -675,7 +715,6 @@ function S2InlineFlow({
             setSelectedDomain(d);
             setSavedValue(null);
             setSavedActivity(null);
-            setExpanded(true);
           }}
           onSubmitMessage={onSubmitMessage}
         />
@@ -690,7 +729,6 @@ function S2InlineFlow({
           savedValue={savedValue}
           onSaved={(value) => {
             setSavedValue(value);
-            setExpanded(true);
           }}
           onSubmitMessage={onSubmitMessage}
           onProgressRefresh={onProgressRefresh}
@@ -707,7 +745,6 @@ function S2InlineFlow({
           savedActivity={savedActivity}
           onSaved={(activity) => {
             setSavedActivity(activity);
-            setExpanded(true);
           }}
           onSubmitMessage={onSubmitMessage}
           onProgressRefresh={onProgressRefresh}
@@ -726,41 +763,19 @@ function S2InlineFlow({
   }
 
   return (
-    <View className="px-3 py-2 bg-orange-50 border-b border-orange-100">
-      <TouchableOpacity
-        onPress={() => setExpanded(v => !v)}
-        activeOpacity={0.85}
-        className="bg-white rounded-2xl border border-orange-100 px-4 py-3 flex-row items-center gap-3"
-      >
-        <View className="flex-1">
-          <Text className="text-xs font-semibold text-orange-500 mb-1">{title}</Text>
-          <Text className="text-xs text-gray-500" numberOfLines={1}>{detail}</Text>
-        </View>
-        <Text className="text-xs font-semibold text-orange-500">
-          {expanded ? (language === 'en' ? 'Hide' : '收起') : (language === 'en' ? 'Open' : '展开')}
-        </Text>
-      </TouchableOpacity>
-
-      {expanded && (
-        <View className="mt-2" style={{ maxHeight: maxPanelHeight }}>
-          <ScrollView
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {content}
-          </ScrollView>
-        </View>
-      )}
-    </View>
+    <PhasePinnedPanel title={title} detail={detail}>
+      {content}
+    </PhasePinnedPanel>
   );
 }
 
 function S3InlineFlow({
-  progress, userId, phaseStep,
+  progress, userId, phaseStep, title,
 }: {
   progress: TreatmentProgressData | null;
   userId: string;
   phaseStep: number;
+  title: string;
 }) {
   const { t } = useLanguage();
   const showReviewCard = phaseStep <= 0;
@@ -768,14 +783,14 @@ function S3InlineFlow({
   if (!showReviewCard) return null;
 
   return (
-    <View className="mt-1 mb-2">
+    <PhasePinnedPanel title={title} detail={t('completedPlanOutlineHint')}>
       <S2ScatterCard
         progress={progress}
         userId={userId}
         includePlans
-        title={t('currentPhaseReview')}
+        title={title}
       />
-    </View>
+    </PhasePinnedPanel>
   );
 }
 
@@ -1300,40 +1315,37 @@ export default function ChatbotScreen() {
   const phaseListHeader = (() => {
     if (currentIntent === 'phase:setup') {
       return (
-        <View className="mb-2">
-          <S2InlineFlow
-            progress={treatmentProgress}
-            userId={userId}
-            phaseStep={currentPhaseStep}
-            onSubmitMessage={_sendMessage}
-            onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
-          />
-        </View>
+        <S2InlineFlow
+          progress={treatmentProgress}
+          userId={userId}
+          phaseStep={currentPhaseStep}
+          onSubmitMessage={_sendMessage}
+          onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
+        />
       );
     }
 
     if (currentIntent === 'phase:first_review') {
       return (
-        <View className="mb-2">
-          <S3InlineFlow
-            progress={treatmentProgress}
-            userId={userId}
-            phaseStep={currentPhaseStep}
-          />
-        </View>
+        <S3InlineFlow
+          progress={treatmentProgress}
+          userId={userId}
+          phaseStep={currentPhaseStep}
+          title={t('currentPhaseReview')}
+        />
       );
     }
 
     if (currentIntent === 'phase:review_cycle') {
       return (
-        <View className="mb-2">
+        <PhasePinnedPanel title={t('currentWeekReview')} detail={t('completedPlanOutlineHint')}>
           <S2ScatterCard
             progress={treatmentProgress}
             userId={userId}
             includePlans
             title={t('currentWeekReview')}
           />
-        </View>
+        </PhasePinnedPanel>
       );
     }
 
