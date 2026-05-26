@@ -13,7 +13,7 @@ import { api, isAiAccessRequiredError } from '../src/api';
 import { AppLanguage, translateDomainName, useLanguage } from '../src/i18n';
 import { useUserId } from '../src/userStore';
 import type {
-  ChatMessage, ChatSession, TreatmentProgressData, LifeDomain,
+  ChatMessage, ChatResponse, ChatSession, TreatmentProgressData, LifeDomain,
   MoodRecord, Value, Activity, PlannedActivity,
 } from '../src/types';
 
@@ -275,7 +275,7 @@ function Bubble({ msg }: { msg: ChatMessage }) {
 
 // ── S2 inline cards ──────────────────────────────────────────────────────────
 
-type S2ActionMessage = (msg: string) => void;
+type S2ActionMessage = (msg: string) => Promise<ChatResponse | null>;
 
 function S2ScatterCard({
   progress, userId, includePlans = false, title,
@@ -489,11 +489,12 @@ function S2DomainCard({
 }
 
 function S2ValueCard({
-  userId, domain, savedValue, onSaved, onSubmitMessage, onProgressRefresh,
+  userId, domain, savedValue, phaseStep, onSaved, onSubmitMessage, onProgressRefresh,
 }: {
   userId: string;
   domain: LifeDomain | null;
   savedValue: Value | null;
+  phaseStep: number;
   onSaved: (v: Value) => void;
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
@@ -504,14 +505,21 @@ function S2ValueCard({
 
   const submit = async () => {
     if (!domain || !text.trim() || saving) return;
+    const draft = text.trim();
     setSaving(true);
     try {
-      const value = await api.createValue(domain.id, text.trim(), userId);
+      const res = await onSubmitMessage(language === 'en'
+        ? `[Value entered] Domain: ${translateDomainName(domain.name, language)}. Value: ${draft}`
+        : `【已填写价值观】领域：${domain.name}，价值观：${draft}`);
+      const accepted = typeof res?.phase_step === 'number' && res.phase_step > phaseStep;
+      if (!accepted) {
+        setText(draft);
+        return;
+      }
+
+      const value = await api.createValue(domain.id, draft, userId);
       onSaved(value);
       onProgressRefresh();
-      onSubmitMessage(language === 'en'
-        ? `[Value entered] Domain: ${translateDomainName(domain.name, language)}. Value: ${text.trim()}`
-        : `【已填写价值观】领域：${domain.name}，价值观：${text.trim()}`);
       setText('');
     } finally {
       setSaving(false);
@@ -545,7 +553,7 @@ function S2ValueCard({
             className="w-full py-3 bg-indigo-500 rounded-xl items-center"
             style={{ opacity: (!domain || !text.trim() || saving) ? 0.4 : 1 }}
           >
-            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">{t('saveValue')}</Text>}
+            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">{t('submitValueForReview')}</Text>}
           </TouchableOpacity>
         </>
       )}
@@ -554,12 +562,13 @@ function S2ValueCard({
 }
 
 function S2ActivityCard({
-  userId, domain, value, savedActivity, onSaved, onSubmitMessage, onProgressRefresh,
+  userId, domain, value, savedActivity, phaseStep, onSaved, onSubmitMessage, onProgressRefresh,
 }: {
   userId: string;
   domain: LifeDomain | null;
   value: Value | null;
   savedActivity: Activity | null;
+  phaseStep: number;
   onSaved: (a: Activity) => void;
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
@@ -570,19 +579,26 @@ function S2ActivityCard({
 
   const submit = async () => {
     if (!text.trim() || !domain || !value || saving) return;
+    const draft = text.trim();
     setSaving(true);
     try {
+      const res = await onSubmitMessage(language === 'en'
+        ? `[Activity entered] ${draft} (domain: ${translateDomainName(domain.name, language)})`
+        : `【已填写活动】${draft}（领域：${domain.name}）`);
+      const accepted = typeof res?.phase_step === 'number' && res.phase_step > phaseStep;
+      if (!accepted) {
+        setText(draft);
+        return;
+      }
+
       const activity = await api.createActivity({
-        name: text.trim(),
+        name: draft,
         life_domain_id: domain.id,
         value_id: value.id,
         user_id: userId,
       });
       onSaved(activity);
       onProgressRefresh();
-      onSubmitMessage(language === 'en'
-        ? `[Activity entered] ${text.trim()} (domain: ${translateDomainName(domain.name, language)})`
-        : `【已填写活动】${text.trim()}（领域：${domain.name}）`);
       setText('');
     } finally {
       setSaving(false);
@@ -616,7 +632,7 @@ function S2ActivityCard({
             className="w-full py-3 bg-orange-500 rounded-xl items-center"
             style={{ opacity: (!value || !text.trim() || saving) ? 0.4 : 1 }}
           >
-            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">{t('addToLibrary')}</Text>}
+            {saving ? <ActivityIndicator color="white" /> : <Text className="text-white font-semibold text-sm">{t('submitActivityForReview')}</Text>}
           </TouchableOpacity>
         </>
       )}
@@ -674,6 +690,7 @@ function S2InlineFlow({
           userId={userId}
           domain={selectedDomain}
           savedValue={savedValue}
+          phaseStep={phaseStep}
           onSaved={(value) => {
             setSavedValue(value);
             setExpanded(true);
@@ -691,6 +708,7 @@ function S2InlineFlow({
           domain={selectedDomain}
           value={savedValue}
           savedActivity={savedActivity}
+          phaseStep={phaseStep}
           onSaved={(activity) => {
             setSavedActivity(activity);
             setExpanded(true);
@@ -1104,7 +1122,7 @@ export default function ChatbotScreen() {
   // ── Core send ───────────────────────────────────────────────────────────────
   const _sendMessage = useCallback(async (text: string, sessionIdOverride?: number) => {
     const sid = sessionIdOverride ?? currentSessionId;
-    if (!sid) return;
+    if (!sid) return null;
 
     if (text.trim()) {
       setMessages(prev => [...prev, { role: 'user', content: text.trim() }]);
@@ -1118,11 +1136,13 @@ export default function ChatbotScreen() {
       setMessages(prev => [...prev, { role: 'assistant', content: res.reply }]);
       if (res.detected_activity) setDetectedActivity(res.detected_activity);
       if (typeof res.phase_step === 'number') setCurrentPhaseStep(res.phase_step);
+      return res;
     } catch (error) {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: isAiAccessRequiredError(error) ? t('aiChatAccessMessage') : t('networkRetry'),
       }]);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -1381,12 +1401,13 @@ export default function ChatbotScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
+          {phaseListHeader}
+
           <FlatList
             ref={listRef}
             data={allItems}
             keyExtractor={(_, i) => String(i)}
             contentContainerStyle={{ padding: 16, paddingBottom: 16 }}
-            ListHeaderComponent={phaseListHeader}
             keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View className="items-center pt-16">
