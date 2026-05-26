@@ -534,7 +534,9 @@ function S2ValueCard({
             editable={!!domain && !saving}
             placeholder={language === 'en' ? 'For example: taking care of my body and energy' : '例如：照顾好自己的身体和状态'}
             placeholderTextColor="#9ca3af"
+            multiline
             className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
+            style={{ minHeight: 44, maxHeight: 96, textAlignVertical: 'top' }}
           />
           <TouchableOpacity
             onPress={submit}
@@ -603,7 +605,9 @@ function S2ActivityCard({
             editable={!!value && !saving}
             placeholder={language === 'en' ? 'For example: walk for 15 minutes on Wednesday evening' : '例如：周三晚上散步15分钟'}
             placeholderTextColor="#9ca3af"
+            multiline
             className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-800 mb-3"
+            style={{ minHeight: 44, maxHeight: 96, textAlignVertical: 'top' }}
           />
           <TouchableOpacity
             onPress={submit}
@@ -628,49 +632,108 @@ function S2InlineFlow({
   onSubmitMessage: S2ActionMessage;
   onProgressRefresh: () => void;
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const { height } = useWindowDimensions();
   const [selectedDomain, setSelectedDomain] = useState<LifeDomain | null>(null);
   const [savedValue, setSavedValue] = useState<Value | null>(null);
   const [savedActivity, setSavedActivity] = useState<Activity | null>(null);
+  const [expanded, setExpanded] = useState(true);
   const showScatter = phaseStep <= 0;
   const showSetupCards = phaseStep >= 1;
+  const maxPanelHeight = Math.max(170, Math.min(320, Math.round(height * 0.36)));
 
-  return (
-    <View className="mt-1 mb-2">
-      {showScatter && <S2ScatterCard progress={progress} userId={userId} />}
-      {showSetupCards && (
+  if (!showScatter && !showSetupCards) return null;
+
+  let title = t('previousPhaseDistribution');
+  let detail = t('chartHint');
+  let content: React.ReactNode = <S2ScatterCard progress={progress} userId={userId} />;
+
+  if (showSetupCards) {
+    if (!selectedDomain) {
+      title = t('chooseLifeDomain');
+      detail = t('chooseLifeDomainHint');
+      content = (
         <S2DomainCard
           userId={userId}
           selected={selectedDomain}
-          onSelect={(d) => { setSelectedDomain(d); setSavedValue(null); setSavedActivity(null); }}
+          onSelect={(d) => {
+            setSelectedDomain(d);
+            setSavedValue(null);
+            setSavedActivity(null);
+            setExpanded(true);
+          }}
           onSubmitMessage={onSubmitMessage}
         />
-      )}
-      {showSetupCards && selectedDomain && (
+      );
+    } else if (!savedValue) {
+      title = t('writeValue');
+      detail = `${t('currentDomain')}: ${translateDomainName(selectedDomain.name, language)}`;
+      content = (
         <S2ValueCard
           userId={userId}
           domain={selectedDomain}
           savedValue={savedValue}
-          onSaved={setSavedValue}
+          onSaved={(value) => {
+            setSavedValue(value);
+            setExpanded(true);
+          }}
           onSubmitMessage={onSubmitMessage}
           onProgressRefresh={onProgressRefresh}
         />
-      )}
-      {showSetupCards && savedValue && (
+      );
+    } else if (!savedActivity) {
+      title = t('addStartableActivity');
+      detail = savedValue.content;
+      content = (
         <S2ActivityCard
           userId={userId}
           domain={selectedDomain}
           value={savedValue}
           savedActivity={savedActivity}
-          onSaved={setSavedActivity}
+          onSaved={(activity) => {
+            setSavedActivity(activity);
+            setExpanded(true);
+          }}
           onSubmitMessage={onSubmitMessage}
           onProgressRefresh={onProgressRefresh}
         />
-      )}
-      {showSetupCards && savedActivity && (
+      );
+    } else {
+      title = t('nextStep');
+      detail = savedActivity.name;
+      content = (
         <View className="bg-green-50 rounded-2xl border border-green-100 px-4 py-3 mb-3">
           <Text className="text-xs font-semibold text-green-600 mb-1">{t('nextStep')}</Text>
           <Text className="text-xs text-gray-600 leading-relaxed">{t('activityInLibraryNext')}</Text>
+        </View>
+      );
+    }
+  }
+
+  return (
+    <View className="px-3 py-2 bg-orange-50 border-b border-orange-100">
+      <TouchableOpacity
+        onPress={() => setExpanded(v => !v)}
+        activeOpacity={0.85}
+        className="bg-white rounded-2xl border border-orange-100 px-4 py-3 flex-row items-center gap-3"
+      >
+        <View className="flex-1">
+          <Text className="text-xs font-semibold text-orange-500 mb-1">{title}</Text>
+          <Text className="text-xs text-gray-500" numberOfLines={1}>{detail}</Text>
+        </View>
+        <Text className="text-xs font-semibold text-orange-500">
+          {expanded ? (language === 'en' ? 'Hide' : '收起') : (language === 'en' ? 'Open' : '展开')}
+        </Text>
+      </TouchableOpacity>
+
+      {expanded && (
+        <View className="mt-2" style={{ maxHeight: maxPanelHeight }}>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {content}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -1035,6 +1098,7 @@ export default function ChatbotScreen() {
   const [showRecord, setShowRecord] = useState(false);
   const [showPlan, setShowPlan] = useState(false);
   const listRef = useRef<FlatList>(null);
+  const lastAutoScrolledItemCount = useRef(0);
 
   // ── Core send ───────────────────────────────────────────────────────────────
   const _sendMessage = useCallback(async (text: string, sessionIdOverride?: number) => {
@@ -1204,21 +1268,19 @@ export default function ChatbotScreen() {
 
   const companionName = language === 'en' ? 'Xiao Nuan' : '小暖';
   const allItems: (ChatMessage | 'typing')[] = loading ? [...messages, 'typing'] : messages;
-  const phaseListHeader = (() => {
-    if (currentIntent === 'phase:setup') {
-      return (
-        <View className="mb-2">
-          <S2InlineFlow
-            progress={treatmentProgress}
-            userId={userId}
-            phaseStep={currentPhaseStep}
-            onSubmitMessage={_sendMessage}
-            onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
-          />
-        </View>
-      );
-    }
 
+  useEffect(() => {
+    if (initializing) return;
+    if (allItems.length > lastAutoScrolledItemCount.current) {
+      const timer = setTimeout(() => {
+        listRef.current?.scrollToEnd({ animated: true });
+      }, 80);
+      lastAutoScrolledItemCount.current = allItems.length;
+      return () => clearTimeout(timer);
+    }
+    lastAutoScrolledItemCount.current = allItems.length;
+  }, [allItems.length, initializing]);
+  const phaseListHeader = (() => {
     if (currentIntent === 'phase:first_review') {
       return (
         <View className="mb-2">
@@ -1248,7 +1310,7 @@ export default function ChatbotScreen() {
   })();
 
   return (
-    <SafeAreaView className="flex-1 bg-orange-50" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-orange-50" edges={['top', 'bottom']}>
       {/* Header */}
       <View className="flex-row items-center gap-3 px-4 py-3 bg-white border-b border-gray-100">
         <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-1">
@@ -1304,13 +1366,23 @@ export default function ChatbotScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={0}
         >
+          {currentIntent === 'phase:setup' && (
+            <S2InlineFlow
+              progress={treatmentProgress}
+              userId={userId}
+              phaseStep={currentPhaseStep}
+              onSubmitMessage={_sendMessage}
+              onProgressRefresh={() => api.getTreatmentProgress(userId).then(setTreatmentProgress).catch(() => {})}
+            />
+          )}
+
           <FlatList
             ref={listRef}
             data={allItems}
             keyExtractor={(_, i) => String(i)}
-            contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+            contentContainerStyle={{ padding: 16, paddingBottom: 16 }}
             ListHeaderComponent={phaseListHeader}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            keyboardShouldPersistTaps="handled"
             ListEmptyComponent={
               <View className="items-center pt-16">
                 <XiaoNuan size={64} />
@@ -1340,7 +1412,7 @@ export default function ChatbotScreen() {
               placeholderTextColor="#9ca3af"
               multiline
               className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 text-sm text-gray-800"
-              style={{ maxHeight: 120 }}
+              style={{ maxHeight: 120, textAlignVertical: 'top' }}
               editable={!loading}
               onSubmitEditing={() => { if (input.trim() && !loading) _sendMessage(input); }}
               blurOnSubmit={false}

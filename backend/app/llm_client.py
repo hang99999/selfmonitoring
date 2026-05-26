@@ -1,9 +1,13 @@
 import os
 import json
+import asyncio
+import logging
 import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -12,6 +16,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MODELSCOPE_API_KEY = os.getenv("MODELSCOPE_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+LLM_MAX_RETRIES = 2
+LLM_RETRY_BASE_DELAY = 0.8
 
 
 def _get_model() -> str:
@@ -26,13 +32,16 @@ async def call_llm(system_prompt: str, user_message: str) -> str:
     """Unified LLM call layer supporting OpenAI, Anthropic, and ModelScope APIs."""
     model = _get_model()
 
-    try:
+    async def operation() -> str:
         if LLM_PROVIDER == "anthropic":
             return await _call_anthropic(system_prompt, user_message, model)
         elif LLM_PROVIDER == "modelscope":
             return await _call_modelscope(system_prompt, user_message, model)
         else:
             return await _call_openai(system_prompt, user_message, model)
+
+    try:
+        return await _call_with_retries("llm", operation)
     except Exception as e:
         return f"[LLM Error] {type(e).__name__}: {str(e)}"
 
@@ -41,15 +50,54 @@ async def call_llm_chat(system_prompt: str, messages: list[dict]) -> str:
     """Multi-turn chat call. messages is a list of {role: 'user'|'assistant', content: str}."""
     model = _get_model()
 
-    try:
+    async def operation() -> str:
         if LLM_PROVIDER == "anthropic":
             return await _call_anthropic_chat(system_prompt, messages, model)
         elif LLM_PROVIDER == "modelscope":
             return await _call_modelscope_chat(system_prompt, messages, model)
         else:
             return await _call_openai_chat(system_prompt, messages, model)
+
+    try:
+        return await _call_with_retries("llm_chat", operation)
     except Exception as e:
         return f"[LLM Error] {type(e).__name__}: {str(e)}"
+
+
+def _is_retryable_llm_error(error: Exception) -> bool:
+    if isinstance(error, (json.JSONDecodeError, httpx.TimeoutException, httpx.TransportError)):
+        return True
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in {408, 409, 425, 429, 500, 502, 503, 504}
+    if isinstance(error, (KeyError, IndexError)):
+        return True
+    if isinstance(error, ValueError):
+        message = str(error)
+        return message.startswith("Empty choices") or message.startswith("Empty content")
+    return False
+
+
+async def _call_with_retries(label: str, operation) -> str:
+    attempts = LLM_MAX_RETRIES + 1
+    for attempt in range(1, attempts + 1):
+        try:
+            return await operation()
+        except Exception as error:
+            if attempt >= attempts or not _is_retryable_llm_error(error):
+                raise
+            delay = LLM_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+            logger.warning(
+                "%s failed on attempt %s/%s with %s: %s; retrying in %.1fs",
+                label,
+                attempt,
+                attempts,
+                type(error).__name__,
+                error,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+    raise RuntimeError(f"{label} failed unexpectedly")
 
 
 async def _call_openai(system_prompt: str, user_message: str, model: str) -> str:
