@@ -715,6 +715,25 @@ def _phase_session_completed_since(
 
 # ── Session title background task ─────────────────────────────────────────────
 
+def _trigger_session_completed(db: Session, user_id: str, session_id: int) -> bool:
+    return db.query(TriggerLog).filter(
+        TriggerLog.user_id == user_id,
+        TriggerLog.trigger_type == f"trigger_session:{session_id}",
+    ).first() is not None
+
+
+def _special_session_completed(db: Session, session: ChatSession, user_id: str) -> bool:
+    intent = session.session_intent
+    if not intent:
+        return False
+    if intent.startswith("phase:"):
+        phase = intent.removeprefix("phase:")
+        return (session.phase_step or 0) >= _phase_completion_step(phase)
+    if intent.startswith("trigger:"):
+        return _trigger_session_completed(db, user_id, session.id)
+    return False
+
+
 async def _generate_session_title(session_id: int, context_messages: list[dict], language: str = "zh"):
     """Background task: ask LLM for a short session title, then save it."""
     db = SessionLocal()
@@ -806,6 +825,8 @@ async def get_current_session(
             )
     session = query.order_by(ChatSession.created_at.desc()).first()
     if not session:
+        return None
+    if _special_session_completed(db, session, user_id):
         return None
     return {
         "id": session.id,
@@ -1005,8 +1026,8 @@ async def chat(
 
     # Record trigger usage for cooldowns. Phase sessions are recorded only after
     # the final step is completed, so opening/leaving the page does not count.
-    if req.session_intent and req.session_intent.startswith("trigger:"):
-        trigger_key = req.session_intent.removeprefix("trigger:")
+    if effective_intent and effective_intent.startswith("trigger:"):
+        trigger_key = effective_intent.removeprefix("trigger:")
         _record_trigger(db, req.user_id, trigger_key)
 
     # Strip hidden [ACT:...] tag
@@ -1023,6 +1044,14 @@ async def chat(
                     and phase_session_obj.phase_step >= _phase_completion_step(progress.phase)):
                 _record_trigger(db, req.user_id, f"phase_session:{progress.phase}")
             db.commit()
+
+    if (
+        effective_intent
+        and effective_intent.startswith("trigger:")
+        and req.message.strip()
+        and phase_session_obj
+    ):
+        _record_trigger(db, req.user_id, f"trigger_session:{phase_session_obj.id}")
 
     # Save assistant reply to DB
     db.add(ChatMessageRecord(

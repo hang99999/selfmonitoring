@@ -9,7 +9,7 @@ import { AppLanguage, getStoredLanguage } from './i18n';
 
 // ── 后端地址 ────────────────────────────────────────────────────────────────
 // 开发时手机和电脑在同一 WiFi 下，指向电脑局域网 IP
-const DEFAULT_API_BASE = 'http://47.239.197.238:8000';
+const DEFAULT_API_BASE = 'https://api.warmsteps.xyz';
 const BASE = process.env.EXPO_PUBLIC_API_BASE_URL || DEFAULT_API_BASE;
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
