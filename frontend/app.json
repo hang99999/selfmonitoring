@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.xiaonuan.ba",
+      "bundleIdentifier": "xyz.warmsteps.app",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "需要麦克风权限来录制活动记录的语音备注"
       }
