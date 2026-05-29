@@ -1,5 +1,6 @@
 """Chatbot router — BA companion chatbot (BATD-R)."""
 
+import asyncio
 import json
 import re
 from collections import Counter
@@ -28,6 +29,7 @@ router = APIRouter(prefix="/api/chatbot", tags=["chatbot"])
 # ── Dev: debug trigger injection ──────────────────────────────────────────────
 # Maps user_id → trigger name. Consumed once on next /chat call.
 _debug_triggers: dict[str, str] = {}
+_empty_chat_locks: dict[int, asyncio.Lock] = {}
 
 # ── Safety ───────────────────────────────────────────────────────────────────
 
@@ -825,14 +827,41 @@ async def get_current_session(
             )
     session = query.order_by(ChatSession.created_at.desc()).first()
     if not session:
-        return None
+        if intent and intent.startswith("phase:"):
+            progress = _get_or_create_progress(db, user_id)
+            phase = intent.removeprefix("phase:")
+            if progress.phase == phase:
+                cutoff = datetime.now() - timedelta(minutes=2)
+                candidate = (
+                    db.query(ChatSession)
+                    .filter(
+                        ChatSession.user_id == user_id,
+                        ChatSession.session_intent.is_(None),
+                        ChatSession.created_at >= progress.phase_unlocked_at,
+                        ChatSession.created_at >= cutoff,
+                    )
+                    .order_by(ChatSession.created_at.desc())
+                    .first()
+                )
+                if candidate:
+                    has_messages = db.query(ChatMessageRecord.id).filter(
+                        ChatMessageRecord.session_id == candidate.id,
+                        ChatMessageRecord.user_id == user_id,
+                    ).first()
+                    if not has_messages:
+                        candidate.session_intent = intent
+                        db.commit()
+                        db.refresh(candidate)
+                        session = candidate
+        if not session:
+            return None
     if _special_session_completed(db, session, user_id):
         return None
     return {
         "id": session.id,
         "title": session.title,
         "created_at": session.created_at.isoformat(),
-        "phase_step": session.phase_step,
+        "phase_step": max(0, session.phase_step or 0),
         "session_intent": session.session_intent,
     }
 
@@ -903,6 +932,19 @@ async def chat(
     db: Session = Depends(get_db),
     app_language: str | None = Header(default=None, alias="X-App-Language"),
 ):
+    if not req.message.strip():
+        lock = _empty_chat_locks.setdefault(req.session_id, asyncio.Lock())
+        async with lock:
+            return await _chat_impl(req, background_tasks, db, app_language)
+    return await _chat_impl(req, background_tasks, db, app_language)
+
+
+async def _chat_impl(
+    req: ChatRequest,
+    background_tasks: BackgroundTasks,
+    db: Session,
+    app_language: str | None,
+):
     """Process a chat turn. Client sends session_id + single message; history is loaded from DB."""
     language = get_user_language(db, req.user_id, app_language)
 
@@ -926,6 +968,22 @@ async def chat(
         .all()
     )
     history = [{"role": m.role, "content": m.content} for m in db_messages]
+
+    if not req.message.strip():
+        last_assistant = next((m for m in reversed(db_messages) if m.role == "assistant"), None)
+        if last_assistant:
+            session = db.query(ChatSession).filter(ChatSession.id == req.session_id).first()
+            phase_step = None
+            if session and session.session_intent and session.session_intent.startswith("phase:"):
+                phase_step = max(0, session.phase_step or 0)
+            return {
+                "reply": last_assistant.content,
+                "is_crisis": False,
+                "detected_activity": None,
+                "phase_step": phase_step,
+                "free_chat_route": None,
+                "card_validation": None,
+            }
 
     # Save the incoming user message (if non-empty)
     if req.message.strip():
@@ -963,6 +1021,21 @@ async def chat(
             db.commit()
         elif not req.session_intent:
             effective_intent = phase_session_obj.session_intent
+
+    # Older packaged clients first send an empty, intent-less opening turn, then
+    # auto-start the phase session from the URL intent. Bind that first empty
+    # turn to the current phase so the later phase lookup resumes this session.
+    if (
+        effective_intent is None
+        and phase_session_obj
+        and not req.message.strip()
+        and not history
+        and state.get("is_first_conversation")
+    ):
+        effective_intent = f"phase:{progress.phase}"
+        phase_session_obj.session_intent = effective_intent
+        db.commit()
+        _record_trigger(db, req.user_id, "first_conversation")
 
     response_phase_step = None
 
@@ -1002,7 +1075,7 @@ async def chat(
 
     # Inject step tracking for phase sessions
     if effective_intent and effective_intent.startswith("phase:"):
-        current_step = phase_session_obj.phase_step if phase_session_obj else 0
+        current_step = max(0, (phase_session_obj.phase_step if phase_session_obj else 0) or 0)
         response_phase_step = current_step
         system += (
             f"\n\n---\n"
