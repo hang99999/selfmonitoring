@@ -3,7 +3,7 @@ import type {
   LifeDomain, Value, Activity, PlannedActivity, DailyMood,
   ChatMessage, ChatSession, ChatResponse, UserState, DomainRadarItem,
   TreatmentProgressData, Supporter, PlannedActivitySupporter,
-  AudioUploadResponse, AssessmentResult,
+  AudioUploadResponse, AssessmentResult, RecordSubmissionStatus,
 } from './types';
 import { AppLanguage, getStoredLanguage } from './i18n';
 
@@ -33,6 +33,10 @@ export function isAiAccessRequiredError(error: unknown): boolean {
   return error instanceof Error && error.message.includes('AI_ACCESS_REQUIRED');
 }
 
+export function isSubmissionProcessingError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('SUBMISSION_PROCESSING');
+}
+
 export const api = {
   // --- Records ---
   submitRecord: (
@@ -41,6 +45,7 @@ export const api = {
     plannedActivityId?: string,
     quickFields?: { activity: string; pleasure_score: number; importance_score: number },
     audioRecordId?: string,
+    clientSubmissionId?: string,
   ) =>
     request<MoodRecord>('/api/record/submit', {
       method: 'POST',
@@ -48,10 +53,16 @@ export const api = {
         text,
         user_id: userId,
         planned_activity_id: plannedActivityId,
+        ...(clientSubmissionId ? { client_submission_id: clientSubmissionId } : {}),
         ...(audioRecordId ? { audio_record_id: audioRecordId } : {}),
         ...quickFields,
       }),
     }),
+
+  getRecordSubmission: (clientSubmissionId: string, userId = 'default_user') =>
+    request<RecordSubmissionStatus>(
+      `/api/record/submission/${encodeURIComponent(clientSubmissionId)}?user_id=${encodeURIComponent(userId)}`,
+    ),
 
   submitManualRecord: (data: {
     activity: string;

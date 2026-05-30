@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, ForeignKey, UniqueConstraint
 from app.database import Base
 
 
@@ -122,6 +122,22 @@ class MoodRecord(Base):
     risk_level = Column(String, default="safe")
     cognitive_distortion = Column(String, nullable=True)
     confirmed = Column(Boolean, default=False)
+
+
+class RecordSubmission(Base):
+    __tablename__ = "record_submissions"
+    __table_args__ = (
+        UniqueConstraint("user_id", "client_submission_id", name="uq_record_submission_client"),
+    )
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    client_submission_id = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="processing")  # processing|succeeded|failed
+    record_id = Column(String, ForeignKey("mood_records.id"), nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=localnow)
+    updated_at = Column(DateTime, default=localnow)
 
 
 class DailyMood(Base):

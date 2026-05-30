@@ -21,6 +21,11 @@ export interface MoodRecord {
   confirmed: boolean;
 }
 
+export interface RecordSubmissionStatus {
+  status: 'processing' | 'succeeded' | 'failed';
+  record?: MoodRecord | null;
+}
+
 export interface Supporter {
   id: string;
   user_id: string;

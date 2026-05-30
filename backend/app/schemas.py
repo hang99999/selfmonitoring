@@ -9,6 +9,7 @@ class RecordSubmitRequest(BaseModel):
     text: str
     user_id: str = "default_user"
     planned_activity_id: Optional[str] = None
+    client_submission_id: Optional[str] = None
     # User-provided fields (skip AI extraction, run safety+feedback async)
     activity: Optional[str] = None
     pleasure_score: Optional[float] = None
@@ -172,6 +173,11 @@ class MoodRecordResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class RecordSubmissionStatusResponse(BaseModel):
+    status: str
+    record: Optional[MoodRecordResponse] = None
 
 
 class TodayStatsRecord(BaseModel):

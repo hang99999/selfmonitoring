@@ -3,13 +3,21 @@ import {
   Modal, View, Text, TextInput, TouchableOpacity,
   ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Linking,
 } from 'react-native';
-import { api, isAiAccessRequiredError } from '../src/api';
+import { api, isAiAccessRequiredError, isSubmissionProcessingError } from '../src/api';
 import { translateDomainName, useLanguage } from '../src/i18n';
 import type { MoodRecord, LifeDomain } from '../src/types';
 import VoiceRecordButton from './VoiceRecordButton';
 
 // Fixed domain list (names match DEFAULT_LIFE_DOMAINS on backend)
 const DOMAIN_NAMES = ['亲密关系', '教育与职业', '休闲兴趣', '自我关怀', '日常责任', '其他'] as const;
+
+function createClientSubmissionId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 interface Props {
   visible: boolean;
@@ -97,6 +105,8 @@ export default function RecordModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [audioRecordId, setAudioRecordId] = useState<string | null>(null);
+  const [clientSubmissionId, setClientSubmissionId] = useState(createClientSubmissionId);
+  const [clientSubmissionText, setClientSubmissionText] = useState('');
   // Domain selection: undefined = not loaded, null = "其他", string = domain ID
   const [domains, setDomains] = useState<LifeDomain[]>([]);
   const [selectedDomainId, setSelectedDomainId] = useState<string | null | undefined>(undefined);
@@ -114,6 +124,8 @@ export default function RecordModal({
     setSelectedDomainId(undefined);
     setDomains([]);
     setAudioRecordId(null);
+    setClientSubmissionId(createClientSubmissionId());
+    setClientSubmissionText('');
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -150,29 +162,53 @@ export default function RecordModal({
     return () => { cancelled = true; };
   }, [visible, userId, plannedActivityName, prefillActivity]);
 
+  const applySubmittedRecord = (rec: MoodRecord) => {
+    setRecord(rec);
+    setActivity(rec.activity || '');
+    setThought(rec.thought || '');
+    setPleasure(rec.pleasure_score ?? 5);
+    setImportance(rec.importance_score ?? 5);
+    setSelectedDomainId(rec.life_domain_id ?? null);
+    api.getDomains(userId).then(setDomains).catch(() => {});
+    setStep(rec.risk_level === 'crisis' ? 'crisis' : 'result');
+  };
+
+  const waitForSubmittedRecord = async (submissionId: string) => {
+    for (let attempt = 0; attempt < 35; attempt += 1) {
+      await delay(1000);
+      const status = await api.getRecordSubmission(submissionId, userId);
+      if (status.record) return status.record;
+      if (status.status === 'failed') break;
+    }
+    throw new Error('SUBMISSION_PROCESSING_TIMEOUT');
+  };
+
   const handleSubmitText = async () => {
     if (!text.trim() || submitting) return;
+    const submissionText = text.trim();
+    const submissionId = clientSubmissionText === submissionText
+      ? clientSubmissionId
+      : createClientSubmissionId();
+    if (submissionId !== clientSubmissionId) setClientSubmissionId(submissionId);
+    if (clientSubmissionText !== submissionText) setClientSubmissionText(submissionText);
     setSubmitting(true);
     setError('');
     setStep('loading');
     try {
-      const rec = await api.submitRecord(text.trim(), userId, plannedActivityId, undefined, audioRecordId ?? undefined);
-      setRecord(rec);
-      setActivity(rec.activity || '');
-      setThought(rec.thought || '');
-      setPleasure(rec.pleasure_score ?? 5);
-      setImportance(rec.importance_score ?? 5);
-      // Pre-fill domain from LLM suggestion (undefined life_domain_id → "其他" = null)
-      setSelectedDomainId(rec.life_domain_id ?? null);
-      // Fetch domain list for the selector
-      api.getDomains(userId).then(setDomains).catch(() => {});
-      if (rec.risk_level === 'crisis') {
-        setStep('crisis');
-      } else {
-        setStep('result');
-      }
+      const rec = await api.submitRecord(submissionText, userId, plannedActivityId, undefined, audioRecordId ?? undefined, submissionId);
+      applySubmittedRecord(rec);
     } catch (error) {
-      setError(isAiAccessRequiredError(error) ? t('aiRecordAccessMessage') : t('submitFailed'));
+      if (isSubmissionProcessingError(error)) {
+        try {
+          const rec = await waitForSubmittedRecord(submissionId);
+          applySubmittedRecord(rec);
+          return;
+        } catch {
+          setError(t('submitFailed'));
+        }
+      } else {
+        setError(isAiAccessRequiredError(error) ? t('aiRecordAccessMessage') : t('submitFailed'));
+      }
       setStep('input');
     } finally {
       setSubmitting(false);
