@@ -1,3 +1,8 @@
+# Knowledge base - built locally by scripts/build_kb.py, not committed
+backend/data/*.pdf
+backend/data/*_kb.json
+backend/chroma_db/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -8,8 +13,15 @@ dist/
 
 # Environment
 .env
+.env.production
 .venv/
 venv/
+
+# Logs
+*.log
+
+# Claude Code local config
+.claude/
 
 # Node
 node_modules/
